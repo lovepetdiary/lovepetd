@@ -409,41 +409,36 @@
         async function renderHome(container) {
             const snap = await getDocs(query(collection(db, "diaries"), where("userId", "==", currentUser.uid)));
             
-            let firstDiaryTime = null;
-            const uniqueDates = new Set();
+            const uniqueActualDates = new Set();
             let diaryImages = [];
             
             snap.forEach(doc => {
                 const data = doc.data();
-                const date = data.diaryDate || new Date(data.timestamp).toLocaleDateString('en-CA');
-                uniqueDates.add(date);
-                if (!firstDiaryTime || data.timestamp < firstDiaryTime) {
-                    firstDiaryTime = data.timestamp;
-                }
+                const date = data.actualCreatedDate || new Date(data.timestamp - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+                uniqueActualDates.add(date);
                 if (data.imageUrl) {
                     diaryImages.push({url: data.imageUrl, data: {id: doc.id, ...data}});
                 }
             });
 
-            // 4. 연속 일기(Streak) 리셋 로직 적용
-            const sortedDates = Array.from(uniqueDates).sort((a, b) => new Date(b) - new Date(a));
+            // 연속 일기(Streak) 리셋 로직 적용
             let streakCount = 0;
-            let today = new Date();
-            today.setHours(0, 0, 0, 0);
-            let checkDate = new Date(today);
+            const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+            let checkDate = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+            checkDate.setUTCHours(0, 0, 0, 0);
 
-            // 오늘 일기를 안 썼으면 어제부터 체크해서 끊겼는지 확인
-            if (!uniqueDates.has(today.toLocaleDateString('en-CA'))) {
-                checkDate.setDate(checkDate.getDate() - 1);
+            const hasWrittenToday = uniqueActualDates.has(todayStr);
+
+            if (!hasWrittenToday) {
+                checkDate.setUTCDate(checkDate.getUTCDate() - 1);
             }
 
-            // 연속된 날짜만큼 카운트 (중간에 하루라도 비면 중단)
-            while (uniqueDates.has(checkDate.toLocaleDateString('en-CA'))) {
+            while (uniqueActualDates.has(checkDate.toISOString().split('T')[0])) {
                 streakCount++;
-                checkDate.setDate(checkDate.getDate() - 1);
+                checkDate.setUTCDate(checkDate.getUTCDate() - 1);
             }
-            // 오늘 새로 시작하거나 어제 끊겼으면 다시 1일차부터 (오늘 썼을 때 기준)
-            if (streakCount === 0 && uniqueDates.has(today.toLocaleDateString('en-CA'))) streakCount = 1;
+            
+            if (streakCount === 0 && hasWrittenToday) streakCount = 1;
 
             window.currentRandomDiary = null;
             if (diaryImages.length > 0) {
@@ -457,22 +452,16 @@
             const birthDateObj = new Date(petData.birthDate);
             const diffDays = Math.floor((Date.now() - birthDateObj.getTime()) / 86400000) + 1;
             
-            let hundredDateStr = '-';
-            let ddayStr = '기록 없음';
+            let targetDateStr = '';
+            let ddayStr = '';
             
-            if (firstDiaryTime) {
-                const firstDateObj = new Date(firstDiaryTime);
-                firstDateObj.setHours(0,0,0,0);
-                const hundredDateObj = new Date(firstDateObj.getTime() + 99 * 86400000); 
-                hundredDateStr = hundredDateObj.getFullYear() + '.' + (hundredDateObj.getMonth()+1).toString().padStart(2, '0') + '.' + hundredDateObj.getDate().toString().padStart(2, '0');
-                
-                const todayRef = new Date();
-                todayRef.setHours(0,0,0,0);
-                const remainDays = Math.floor((hundredDateObj.getTime() - todayRef.getTime()) / 86400000);
-                ddayStr = remainDays > 0 ? `D-${remainDays}` : (remainDays < 0 ? `D+${Math.abs(remainDays)}` : `D-Day`);
+            if (!hasWrittenToday) {
+                targetDateStr = '기록 대기중';
+                ddayStr = '오늘 일기를 작성하면';
             } else {
-                hundredDateStr = '일기 작성 대기중';
-                ddayStr = '첫 일기를 써주세요';
+                let remainDays = 30 - streakCount;
+                targetDateStr = '30일 목표';
+                ddayStr = remainDays > 0 ? `D-${remainDays}` : `목표 달성!`;
             }
 
             container.innerHTML = `
@@ -491,8 +480,8 @@
                             <p class="text-2xl font-black text-teal-800">${streakCount}<span class="text-sm font-normal ml-1">일차</span></p>
                         </div>
                         <div class="bg-orange-50 p-5 rounded-[2rem] border border-orange-100 flex flex-col justify-center">
-                            <p class="text-xs text-orange-600 font-bold mb-1">목표 <span class="ml-1 text-[10px] font-normal text-orange-500 block sm:inline mt-1 sm:mt-0">${hundredDateStr}</span></p>
-                            <p class="text-lg font-black text-orange-800 leading-tight">100일 완성 <span class="text-sm ml-1 text-orange-600 block sm:inline">${ddayStr}</span></p>
+                            <p class="text-xs text-orange-600 font-bold mb-1">목표 <span class="ml-1 text-[10px] font-normal text-orange-500 block sm:inline mt-1 sm:mt-0">${targetDateStr}</span></p>
+                            <p class="text-lg font-black text-orange-800 leading-tight">30일 완성 <span class="text-sm ml-1 text-orange-600 block sm:inline">${ddayStr}</span></p>
                         </div>
                     </div>
                 </div>`;
@@ -574,7 +563,7 @@
             const snap = await getDocs(q);
             container.innerHTML = '';
             let list = []; 
-            const allDiaryDates = new Set(); // 1번 요청: 점 표시를 위해 날짜 저장
+            const allDiaryDates = new Set(); 
 
             snap.forEach(d => {
                 let data = d.data();
@@ -605,11 +594,8 @@
                     card.onclick = () => showDetail(item);
                     
                     const authorId = item.userEmail ? item.userEmail.split('@')[0] : '익명';
-                    // 2. 작성자 사진 경로 문제 해결 및 fallback 추가
-                    const authorPic = item.authorProfileImageUrl || 'https://via.placeholder.com/150';
                     let publicHeader = `
                         <div class="flex items-center gap-2">
-                            <img src="${authorPic}" onerror="this.src='https://via.placeholder.com/150'" onclick="showProfileModal('${authorPic}', event)" class="w-5 h-5 rounded-full object-cover shadow-sm z-10 cursor-pointer">
                             <span class="text-[10px] font-bold text-slate-400 z-10 relative">by ${authorId}</span>
                             <div class="flex gap-1 items-center z-10 relative ml-1">
                                 <span class="text-[10px] text-slate-300 mr-1"><i class="fas fa-comment"></i> ${commentCount}</span>
@@ -630,12 +616,10 @@
                 });
 
                 let mode = window.currentPrivateViewMode || userData?.preferredViewMode || 'card';
-                const uniqueDates = [...new Set(list.map(d => d.diaryDate))];
                 
                 let headerDiv = document.createElement('div');
                 headerDiv.className = "flex justify-between items-center px-6 pt-4 gap-2";
                 
-                // 1. 캘린더/날짜 칩 아래에 점(Dot) 표시 로직
                 let dateChips = `
                     <div class="relative flex-none">
                         <input type="date" id="calendarPicker" class="absolute inset-0 opacity-0 w-full h-full cursor-pointer" onchange="setDiaryDateFilter(this.value)">
@@ -645,18 +629,6 @@
                     </div>
                     <button onclick="setDiaryDateFilter(null)" class="flex-none px-3 py-1.5 rounded-full text-xs font-bold ${!window.selectedDiaryDate ? 'bg-teal-500 text-white shadow-md' : 'bg-slate-100 text-slate-500'}">전체</button>
                 `;
-                
-                uniqueDates.forEach(date => {
-                    let isSel = window.selectedDiaryDate === date;
-                    // 1번 수정: 날짜 아래에 점이 찍히도록 레이아웃 변경
-                    dateChips += `
-                        <button onclick="setDiaryDateFilter('${date}')" class="flex-none flex flex-col items-center gap-0.5 min-w-[45px]">
-                            <div class="px-3 py-1.5 rounded-full text-xs font-bold ${isSel ? 'bg-teal-500 text-white shadow-md' : 'bg-slate-100 text-slate-500'}">
-                                ${date.substring(5).replace('-','.')}
-                            </div>
-                            <div class="dot-indicator ${allDiaryDates.has(date) ? 'opacity-100' : 'opacity-0'}"></div>
-                        </button>`;
-                });
 
                 headerDiv.innerHTML = `
                     <div class="flex overflow-x-auto no-scrollbar gap-2 items-center w-[80%] pl-1">${dateChips}</div>
@@ -737,10 +709,8 @@
 
             if (item.isPublic && activeTab === 'public') {
                 const authorId = item.userEmail ? item.userEmail.split('@')[0] : '익명';
-                const authorPic = item.authorProfileImageUrl || 'https://via.placeholder.com/150';
                 authorStr = `
                     <div class="flex items-center gap-2 ml-3 border-l border-slate-200 pl-3">
-                        <img src="${authorPic}" onerror="this.src='https://via.placeholder.com/150'" onclick="showProfileModal('${authorPic}', event)" class="w-5 h-5 rounded-full object-cover shadow-sm cursor-pointer">
                         <span class="text-xs font-bold text-slate-400">by ${authorId}</span>
                     </div>`;
                 
@@ -948,6 +918,8 @@
                 imageUrl = await getDownloadURL(snap.ref);
             }
             
+            const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+            
             const diaryData = { 
                 title,
                 diaryDate,
@@ -955,7 +927,8 @@
                 isPublic: document.getElementById('isPublic').checked, 
                 userId: currentUser.uid, 
                 userEmail: currentUser.email,
-                authorProfileImageUrl: petData.profileImageUrl || ''
+                authorProfileImageUrl: petData.profileImageUrl || '',
+                actualCreatedDate: todayStr
             };
             if (imageUrl) diaryData.imageUrl = imageUrl;
             
