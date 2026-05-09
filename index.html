@@ -6,6 +6,7 @@
     <title>펫다이어리 PRO</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
         body { font-family: 'Noto Sans KR', sans-serif; background-color: #f8fafc; }
@@ -13,19 +14,22 @@
         .tab-active { color: #14b8a6; border-bottom: 3px solid #14b8a6; font-weight: bold; }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        #toast { visibility: hidden; min-width: 250px; margin-left: -125px; background-color: #333; color: #fff; text-align: center; border-radius: 12px; padding: 16px; position: fixed; z-index: 100; left: 50%; bottom: 50px; font-size: 14px; }
+        #toast.show { visibility: visible; animation: fadeIn 0.3s, fadeOut 0.3s 2.5s; }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
     </style>
 </head>
 <body>
     <div id="app" class="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative flex flex-col">
         </div>
+    <div id="toast"></div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, collection, addDoc, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, fetchSignInMethodsForEmail, deleteUser, EmailAuthProvider, reauthenticateWithCredential } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, collection, addDoc, query, where, getDocs, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
-        // ✅ 대표님의 설정값 유지
         const firebaseConfig = {
             apiKey: "AIzaSyDn6hcoBuDPlv5pf-D3nF4tVa309H6ydvc",
             authDomain: "petdiary-595a2.firebaseapp.com",
@@ -47,21 +51,27 @@
         let activeTab = 'home'; 
         let chatStep = 0;
         let setupData = { profileImageUrl: '', name: '', birthDate: '', focusArea: '' };
+        let backPressCount = 0;
 
-        // 브라우저 뒤로 가기 감지 (앱 이탈 방지 및 홈으로 이동)
+        // 뒤로 가기 감지 및 앱 종료 방지
         window.addEventListener('popstate', (event) => {
-            if (currentUser && petData) {
+            if (activeTab === 'home') {
+                backPressCount++;
+                if (backPressCount === 1) {
+                    showToast("펫다이어리를 나가시려면 뒤로 가기를 한 번 더 눌러주세요");
+                    history.pushState({ tab: 'home' }, '', '#home');
+                    setTimeout(() => { backPressCount = 0; }, 2000);
+                } else if (backPressCount === 2) {
+                    window.history.back();
+                }
+            } else {
                 activeTab = (event.state && event.state.tab) ? event.state.tab : 'home';
-                
-                // 모달(상세보기/글쓰기 등)이 열려있다면 닫기
                 const openModal = document.querySelector('.fixed.bg-black\\/80');
                 if(openModal) openModal.remove();
-                
                 renderLayout();
             }
         });
 
-        // 초기화 및 상태 감지
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUser = user;
@@ -75,31 +85,67 @@
             const petDoc = await getDoc(doc(db, "pets", currentUser.uid));
             if (petDoc.exists()) {
                 petData = petDoc.data();
-                if(!history.state || !history.state.tab) {
-                    history.replaceState({ tab: 'home' }, '', '#home');
-                }
+                if(!history.state) history.replaceState({ tab: 'home' }, '', '#home');
                 renderLayout();
             } else {
-                renderPetSetup(); // 챗봇 온보딩 실행
+                renderPetSetup();
             }
         }
 
-        // 비밀번호 보이기/숨기기 토글 함수
-        window.togglePassword = (id) => {
-            const input = document.getElementById(id);
-            const icon = input.nextElementSibling.querySelector('i');
-            if (input.type === "password") {
-                input.type = "text";
-                icon.classList.remove('fa-eye');
-                icon.classList.add('fa-eye-slash');
+        function showToast(msg) {
+            const x = document.getElementById("toast");
+            x.innerText = msg;
+            x.className = "show";
+            setTimeout(() => { x.className = x.className.replace("show", ""); }, 3000);
+        }
+
+        // 비밀번호 실시간 일치 확인
+        window.checkPasswordMatch = () => {
+            const p1 = document.getElementById('signupPassword').value;
+            const p2 = document.getElementById('signupPasswordConfirm').value;
+            const msg = document.getElementById('pwMatchMsg');
+            if (p2 && p1 !== p2) {
+                msg.innerText = "비밀번호가 일치하지 않습니다.";
+                msg.classList.remove('text-teal-500');
+                msg.classList.add('text-red-500');
+            } else if (p2 && p1 === p2) {
+                msg.innerText = "비밀번호가 일치합니다.";
+                msg.classList.remove('text-red-500');
+                msg.classList.add('text-teal-500');
             } else {
-                input.type = "password";
-                icon.classList.remove('fa-eye-slash');
-                icon.classList.add('fa-eye');
+                msg.innerText = "";
             }
         };
 
-        // 로그인 화면
+        // 도로명 주소 찾기
+        window.execDaumPostcode = () => {
+            new daum.Postcode({
+                oncomplete: function(data) {
+                    document.getElementById('signupAddress').value = data.roadAddress;
+                    document.getElementById('signupAddressDetail').focus();
+                }
+            }).open();
+        };
+
+        // 이메일 중복 확인
+        window.checkEmailDuplicate = async () => {
+            const email = document.getElementById('signupEmail').value;
+            if(!email) return alert("이메일을 입력해 주세요.");
+            try {
+                const methods = await fetchSignInMethodsForEmail(auth, email);
+                if (methods.length > 0) alert("이미 사용 중인 이메일입니다.");
+                else alert("사용 가능한 이메일입니다.");
+            } catch (e) { alert("이메일 형식을 확인해 주세요."); }
+        };
+
+        window.togglePassword = (id) => {
+            const input = document.getElementById(id);
+            const icon = input.nextElementSibling.querySelector('i');
+            input.type = (input.type === "password") ? "text" : "password";
+            icon.classList.toggle('fa-eye');
+            icon.classList.toggle('fa-eye-slash');
+        };
+
         window.renderLogin = function() {
             appDiv.innerHTML = `
                 <div class="flex flex-col items-center justify-center h-screen p-8 text-center animate-fade-in">
@@ -119,9 +165,8 @@
                     </div>
                 </div>
             `;
-        }
+        };
 
-        // 회원가입 전용 화면
         window.renderSignup = function() {
             appDiv.innerHTML = `
                 <div class="p-8 animate-fade-in flex flex-col h-screen overflow-y-auto bg-white">
@@ -129,50 +174,44 @@
                     <h2 class="text-2xl font-bold text-slate-800 mb-6">회원가입</h2>
                     
                     <div class="space-y-3 mb-6">
-                        <input id="signupEmail" type="email" placeholder="이메일 주소 (필수)" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-teal-500">
-                        
+                        <div class="flex gap-2">
+                            <input id="signupEmail" type="email" placeholder="이메일 주소 (필수)" class="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-teal-500">
+                            <button onclick="checkEmailDuplicate()" class="px-4 bg-slate-800 text-white rounded-2xl text-xs font-bold">중복확인</button>
+                        </div>
                         <div class="relative w-full">
-                            <input id="signupPassword" type="password" placeholder="비밀번호 (필수, 6자 이상)" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-teal-500">
+                            <input id="signupPassword" type="password" placeholder="비밀번호 (6자 이상)" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-teal-500">
                             <button onclick="togglePassword('signupPassword')" class="absolute right-4 top-4 text-slate-400"><i class="fas fa-eye"></i></button>
                         </div>
-                        
                         <div class="relative w-full">
-                            <input id="signupPasswordConfirm" type="password" placeholder="비밀번호 확인 (필수)" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-teal-500">
+                            <input id="signupPasswordConfirm" type="password" oninput="checkPasswordMatch()" placeholder="비밀번호 확인" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-teal-500">
                             <button onclick="togglePassword('signupPasswordConfirm')" class="absolute right-4 top-4 text-slate-400"><i class="fas fa-eye"></i></button>
                         </div>
+                        <p id="pwMatchMsg" class="text-[11px] ml-2 font-bold h-4"></p>
                     </div>
 
-                    <h3 class="font-bold text-slate-700 mb-3 text-sm">보호자 선택 정보 (책 배송 등 혜택 제공용)</h3>
+                    <h3 class="font-bold text-slate-700 mb-3 text-sm">보호자 선택 정보 (책 배송 등 혜택용)</h3>
                     <div class="space-y-3 mb-8">
-                        <input id="signupName" type="text" placeholder="이름 (선택)" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-teal-500">
-                        <input id="signupPhone" type="tel" placeholder="휴대폰 번호 (선택)" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-teal-500">
-                        <input id="signupAddress" type="text" placeholder="주소 (선택)" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-teal-500">
-                        <input id="signupBirth" type="date" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:border-teal-500 text-slate-500" title="생년월일 (선택)">
+                        <input id="signupName" type="text" placeholder="이름 (선택)" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none">
+                        <input id="signupPhone" type="tel" placeholder="휴대폰 번호 (선택)" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none">
+                        <div class="flex gap-2">
+                            <input id="signupAddress" type="text" placeholder="주소 찾기를 눌러주세요" readonly class="flex-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none text-sm">
+                            <button onclick="execDaumPostcode()" class="px-4 bg-slate-100 text-slate-600 rounded-2xl text-xs font-bold">주소찾기</button>
+                        </div>
+                        <input id="signupAddressDetail" type="text" placeholder="상세 주소를 입력해주세요" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none">
+                        <div class="px-2">
+                            <label class="text-[11px] text-slate-400 font-bold">보호자 생년월일 (선택)</label>
+                            <input id="signupBirth" type="date" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none mt-1">
+                        </div>
                     </div>
 
                     <button onclick="processSignup()" class="w-full p-4 bg-teal-500 text-white rounded-2xl font-bold shadow-lg mb-8">가입하고 시작하기</button>
                 </div>
             `;
-        }
+        };
 
-        // 챗봇형 반려동물 정보 수집 화면
         function renderPetSetup() {
             chatStep = 0;
-            appDiv.innerHTML = `
-                <div class="flex flex-col h-screen bg-slate-50 w-full animate-fade-in">
-                    <div class="p-4 bg-white shadow-sm flex items-center border-b border-slate-100 z-10">
-                        <div class="w-10 h-10 bg-teal-500 rounded-full flex items-center justify-center text-white mr-3"><i class="fas fa-robot"></i></div>
-                        <div>
-                            <h2 class="font-bold text-slate-800 text-sm">펫다이어리 도우미</h2>
-                            <p class="text-[10px] text-teal-500">온라인</p>
-                        </div>
-                    </div>
-                    <div id="chatContainer" class="flex-1 overflow-y-auto p-5 space-y-4 pb-20">
-                        </div>
-                    <div id="chatInputArea" class="p-4 bg-white border-t border-slate-100 min-h-[80px] flex items-center justify-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                        </div>
-                </div>
-            `;
+            appDiv.innerHTML = `<div class="flex flex-col h-screen bg-slate-50 w-full animate-fade-in"><div class="p-4 bg-white shadow-sm flex items-center border-b border-slate-100 z-10"><div class="w-10 h-10 bg-teal-500 rounded-full flex items-center justify-center text-white mr-3"><i class="fas fa-robot"></i></div><div><h2 class="font-bold text-slate-800 text-sm">펫다이어리 도우미</h2><p class="text-[10px] text-teal-500">온라인</p></div></div><div id="chatContainer" class="flex-1 overflow-y-auto p-5 space-y-4 pb-20"></div><div id="chatInputArea" class="p-4 bg-white border-t border-slate-100 min-h-[80px] flex items-center justify-center"></div></div>`;
             nextChatStep();
         }
 
@@ -180,7 +219,7 @@
             const container = document.getElementById('chatContainer');
             const msg = document.createElement('div');
             msg.className = "flex w-full animate-fade-in mb-2";
-            msg.innerHTML = `<div class="bg-white p-3.5 rounded-2xl rounded-tl-sm shadow-sm text-sm text-slate-700 max-w-[85%] border border-slate-100 leading-relaxed">${text}</div>`;
+            msg.innerHTML = `<div class="bg-white p-3.5 rounded-2xl rounded-tl-sm shadow-sm text-sm text-slate-700 max-w-[85%] border border-slate-100">${text}</div>`;
             container.appendChild(msg);
             container.scrollTop = container.scrollHeight;
         }
@@ -189,7 +228,7 @@
             const container = document.getElementById('chatContainer');
             const msg = document.createElement('div');
             msg.className = "flex w-full justify-end animate-fade-in mb-4";
-            msg.innerHTML = `<div class="bg-teal-500 p-3.5 rounded-2xl rounded-tr-sm shadow-sm text-sm text-white max-w-[85%] leading-relaxed">${text}</div>`;
+            msg.innerHTML = `<div class="bg-teal-500 p-3.5 rounded-2xl rounded-tr-sm shadow-sm text-sm text-white max-w-[85%]">${text}</div>`;
             container.appendChild(msg);
             container.scrollTop = container.scrollHeight;
         }
@@ -197,57 +236,37 @@
         window.nextChatStep = () => {
             const inputArea = document.getElementById('chatInputArea');
             inputArea.innerHTML = '';
-
             if (chatStep === 0) {
                 setTimeout(() => appendBotMsg("가입을 환영합니다! 🎉<br>아이와의 특별한 기록을 시작해볼까요?"), 500);
                 setTimeout(() => {
                     appendBotMsg("먼저, 우리 예쁜 아이의 사진을 보여주시겠어요?");
-                    inputArea.innerHTML = `
-                        <input type="file" id="setupProfileInput" class="hidden" accept="image/*" onchange="handleSetupImage(event)">
-                        <button onclick="document.getElementById('setupProfileInput').click()" class="flex-1 py-3 bg-teal-50 text-teal-600 font-bold rounded-xl border border-teal-200">사진 고르기</button>
-                        <button onclick="skipSetupImage()" class="ml-2 px-4 py-3 text-slate-400 text-sm">건너뛰기</button>
-                    `;
+                    inputArea.innerHTML = `<input type="file" id="setupProfileInput" class="hidden" accept="image/*" onchange="handleSetupImage(event)"><button onclick="document.getElementById('setupProfileInput').click()" class="flex-1 py-3 bg-teal-50 text-teal-600 font-bold rounded-xl">사진 고르기</button><button onclick="skipSetupImage()" class="ml-2 px-4 py-3 text-slate-400 text-sm">건너뛰기</button>`;
                 }, 1500);
             } else if (chatStep === 1) {
                 setTimeout(() => {
                     appendBotMsg("너무 귀엽네요! 😍 이 아이의 이름은 무엇인가요?");
-                    inputArea.innerHTML = `
-                        <input type="text" id="setupNameInput" placeholder="이름 입력" class="flex-1 p-3 bg-slate-100 rounded-xl outline-none mr-2 px-4">
-                        <button onclick="handleSetupName()" class="w-12 h-12 bg-teal-500 text-white rounded-xl flex items-center justify-center"><i class="fas fa-paper-plane"></i></button>
-                    `;
+                    inputArea.innerHTML = `<input type="text" id="setupNameInput" placeholder="이름 입력" class="flex-1 p-3 bg-slate-100 rounded-xl outline-none mr-2 px-4"><button onclick="handleSetupName()" class="w-12 h-12 bg-teal-500 text-white rounded-xl flex items-center justify-center"><i class="fas fa-paper-plane"></i></button>`;
                 }, 500);
             } else if (chatStep === 2) {
                 setTimeout(() => {
                     appendBotMsg(`'${setupData.name}'! 이름이 참 예뻐요. 😊`);
                     setTimeout(() => {
-                        appendBotMsg(`${setupData.name}가 태어난 날(생일)이나 입양된 날짜를 알려주시면, 제가 100일 기념일을 계산해 드릴게요!`);
-                        inputArea.innerHTML = `
-                            <input type="date" id="setupBirthInput" class="flex-1 p-3 bg-slate-100 rounded-xl outline-none mr-2 px-4 text-slate-600">
-                            <button onclick="handleSetupBirth()" class="w-12 h-12 bg-teal-500 text-white rounded-xl flex items-center justify-center"><i class="fas fa-paper-plane"></i></button>
-                        `;
+                        appendBotMsg(`${setupData.name}가 태어난 날이나 입양된 날짜를 알려주시면, 제가 100일 기념일을 계산해 드릴게요!`);
+                        inputArea.innerHTML = `<input type="date" id="setupBirthInput" class="flex-1 p-3 bg-slate-100 rounded-xl outline-none mr-2 px-4 text-slate-600"><button onclick="handleSetupBirth()" class="w-12 h-12 bg-teal-500 text-white rounded-xl flex items-center justify-center"><i class="fas fa-paper-plane"></i></button>`;
                     }, 1000);
                 }, 500);
             } else if (chatStep === 3) {
                 setTimeout(() => {
-                    appendBotMsg("달력에 꾹 적어뒀어요! 🗓️");
+                    appendBotMsg("기억해 둘게요! 🗓️");
                     setTimeout(() => {
                         appendBotMsg(`지금 ${setupData.name}를 위해 어떤 부분을 가장 집중적으로 기록하고 싶으신가요?`);
-                        inputArea.innerHTML = `
-                            <div class="flex gap-2 flex-wrap justify-center w-full">
-                                <button onclick="handleSetupFocus('건강')" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-full font-medium active:bg-teal-100">건강 돌봄</button>
-                                <button onclick="handleSetupFocus('성장')" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-full font-medium active:bg-teal-100">성장 기록</button>
-                                <button onclick="handleSetupFocus('관리')" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-full font-medium active:bg-teal-100">식단 및 미용</button>
-                                <button onclick="handleSetupFocus('일상')" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-full font-medium active:bg-teal-100">행복한 일상</button>
-                            </div>
-                        `;
+                        inputArea.innerHTML = `<div class="flex gap-2 flex-wrap justify-center w-full"><button onclick="handleSetupFocus('건강')" class="px-4 py-2 bg-slate-100 rounded-full text-sm">건강 돌봄</button><button onclick="handleSetupFocus('성장')" class="px-4 py-2 bg-slate-100 rounded-full text-sm">성장 기록</button><button onclick="handleSetupFocus('관리')" class="px-4 py-2 bg-slate-100 rounded-full text-sm">식단 및 미용</button></div>`;
                     }, 1000);
                 }, 500);
             } else if (chatStep === 4) {
                 setTimeout(() => {
-                    appendBotMsg(`좋아요! 앞으로 ${setupData.name}의 [${setupData.focusArea}] 기록을 저와 함께 예쁘게 남겨봐요! ✨`);
-                    setTimeout(() => {
-                        inputArea.innerHTML = `<button onclick="finishSetup()" class="w-full p-4 bg-teal-500 text-white font-bold rounded-xl shadow-lg">다이어리 시작하기</button>`;
-                    }, 1000);
+                    appendBotMsg(`준비 끝! 이제 시작해볼까요? ✨`);
+                    inputArea.innerHTML = `<button onclick="finishSetup()" class="w-full p-4 bg-teal-500 text-white font-bold rounded-xl">다이어리 시작하기</button>`;
                 }, 500);
             }
         };
@@ -255,366 +274,185 @@
         window.handleSetupImage = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            const inputArea = document.getElementById('chatInputArea');
-            inputArea.innerHTML = '<p class="text-teal-500 text-sm font-bold w-full text-center">사진을 올리는 중입니다...</p>';
-            
             const storageRef = ref(storage, `profiles/${currentUser.uid}_${Date.now()}`);
             const snap = await uploadBytes(storageRef, file);
             setupData.profileImageUrl = await getDownloadURL(snap.ref);
-            
             appendUserMsg("사진을 골랐어요!");
-            chatStep++;
-            nextChatStep();
+            chatStep++; nextChatStep();
         };
-
-        window.skipSetupImage = () => {
-            appendUserMsg("사진은 나중에 올릴게요.");
-            chatStep++;
-            nextChatStep();
-        }
-
-        window.handleSetupName = () => {
-            const name = document.getElementById('setupNameInput').value.trim();
-            if(!name) return alert("이름을 입력해주세요.");
-            setupData.name = name;
-            appendUserMsg(name);
-            chatStep++;
-            nextChatStep();
-        };
-
-        window.handleSetupBirth = () => {
-            const birth = document.getElementById('setupBirthInput').value;
-            if(!birth) return alert("날짜를 선택해주세요.");
-            setupData.birthDate = birth;
-            appendUserMsg(birth);
-            chatStep++;
-            nextChatStep();
-        };
-
-        window.handleSetupFocus = (focus) => {
-            setupData.focusArea = focus;
-            appendUserMsg(focus);
-            chatStep++;
-            nextChatStep();
-        };
-
+        window.skipSetupImage = () => { appendUserMsg("나중에 올릴게요."); chatStep++; nextChatStep(); };
+        window.handleSetupName = () => { setupData.name = document.getElementById('setupNameInput').value; appendUserMsg(setupData.name); chatStep++; nextChatStep(); };
+        window.handleSetupBirth = () => { setupData.birthDate = document.getElementById('setupBirthInput').value; appendUserMsg(setupData.birthDate); chatStep++; nextChatStep(); };
+        window.handleSetupFocus = (f) => { setupData.focusArea = f; appendUserMsg(f); chatStep++; nextChatStep(); };
         window.finishSetup = async () => {
-            await setDoc(doc(db, "pets", currentUser.uid), { 
-                name: setupData.name, 
-                birthDate: setupData.birthDate, 
-                profileImageUrl: setupData.profileImageUrl,
-                focusArea: setupData.focusArea
-            });
+            await setDoc(doc(db, "pets", currentUser.uid), setupData);
             await refreshPetData();
         };
 
-        // 회원가입 처리 로직 (보호자 정보 포함)
         window.processSignup = async () => {
             const email = document.getElementById('signupEmail').value;
             const pwd = document.getElementById('signupPassword').value;
             const pwdConfirm = document.getElementById('signupPasswordConfirm').value;
-            
-            if(!email || !pwd) return alert("이메일과 비밀번호를 입력해주세요.");
-            if(pwd.length < 6) return alert("비밀번호는 6자리 이상이어야 합니다.");
-            if(pwd !== pwdConfirm) return alert("비밀번호가 일치하지 않습니다. 다시 확인해주세요.");
-
+            if(!email || pwd !== pwdConfirm) return alert("입력 정보를 확인해 주세요.");
             try {
                 const userCredential = await createUserWithEmailAndPassword(auth, email, pwd);
-                const user = userCredential.user;
-                
-                // 선택 정보 DB 저장
-                await setDoc(doc(db, "users", user.uid), {
-                    email: email,
-                    ownerName: document.getElementById('signupName').value,
+                await setDoc(doc(db, "users", userCredential.user.uid), {
+                    email, ownerName: document.getElementById('signupName').value,
                     phone: document.getElementById('signupPhone').value,
-                    address: document.getElementById('signupAddress').value,
+                    address: document.getElementById('signupAddress').value + " " + document.getElementById('signupAddressDetail').value,
                     ownerBirth: document.getElementById('signupBirth').value,
                     createdAt: Date.now()
                 });
-            } catch (e) { 
-                if(e.code === 'auth/email-already-in-use') alert("이미 가입된 이메일입니다.");
-                else alert("회원가입 오류: " + e.message); 
-            }
+            } catch (e) { alert("회원가입 실패: " + e.message); }
         };
 
         window.handleLogin = async () => {
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            if(!email || !password) return alert("이메일과 비밀번호를 입력해 주세요.");
             try {
-                await signInWithEmailAndPassword(auth, email, password);
-            } catch (e) { alert("로그인 정보를 확인해 주세요!"); }
+                await signInWithEmailAndPassword(auth, document.getElementById('email').value, document.getElementById('password').value);
+            } catch (e) { alert("로그인 실패!"); }
         };
-
-
-        // --- 이하 기존 메인 레이아웃 및 기능 영역 (수정 없음, History API만 연동) ---
 
         function renderLayout() {
             if (!petData) return;
-            appDiv.innerHTML = `
-                <nav class="sticky top-0 bg-white/80 backdrop-blur-md z-30 border-b border-slate-100">
-                    <div class="flex justify-between items-center px-6 pt-6 pb-2">
-                        <h1 class="text-xl font-bold text-slate-800">PET DIARY</h1>
-                        <div class="flex gap-4">
-                            <button onclick="renderEditPet()" class="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1.5 rounded-full">정보수정</button>
-                            <button onclick="handleLogout()" class="text-xs font-bold text-slate-400">로그아웃</button>
-                        </div>
-                    </div>
-                    <div class="flex overflow-x-auto no-scrollbar px-2">
-                        <button onclick="changeTab('home')" class="flex-none px-4 py-3 text-sm ${activeTab === 'home' ? 'tab-active' : 'text-slate-400'}">메인</button>
-                        <button onclick="changeTab('diary')" class="flex-none px-4 py-3 text-sm ${activeTab === 'diary' ? 'tab-active' : 'text-slate-400'}">내 일기</button>
-                        <button onclick="changeTab('public')" class="flex-none px-4 py-3 text-sm ${activeTab === 'public' ? 'tab-active' : 'text-slate-400'}">공개일기</button>
-                        <button onclick="changeTab('talk')" class="flex-none px-4 py-3 text-sm ${activeTab === 'talk' ? 'tab-active' : 'text-slate-400'}">잡담</button>
-                        <button onclick="changeTab('store')" class="flex-none px-4 py-3 text-sm ${activeTab === 'store' ? 'tab-active' : 'text-slate-400'}">스토어</button>
-                    </div>
-                </nav>
-                <div id="content-area" class="flex-1 overflow-y-auto"></div>
-                <button onclick="renderWrite()" class="fixed bottom-8 right-8 w-14 h-14 bg-teal-500 text-white rounded-full shadow-2xl flex items-center justify-center text-xl z-40 transition hover:scale-110 active:scale-95">
-                    <i class="fas fa-edit"></i>
-                </button>
-            `;
+            appDiv.innerHTML = `<nav class="sticky top-0 bg-white/80 backdrop-blur-md z-30 border-b border-slate-100"><div class="flex justify-between items-center px-6 pt-6 pb-2"><h1 class="text-xl font-bold text-slate-800">PET DIARY</h1><div class="flex gap-4"><button onclick="renderEditPet()" class="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1.5 rounded-full">정보수정</button><button onclick="handleLogout()" class="text-xs font-bold text-slate-400">로그아웃</button></div></div><div class="flex overflow-x-auto no-scrollbar px-2"><button onclick="changeTab('home')" class="flex-none px-4 py-3 text-sm ${activeTab === 'home' ? 'tab-active' : 'text-slate-400'}">메인</button><button onclick="changeTab('diary')" class="flex-none px-4 py-3 text-sm ${activeTab === 'diary' ? 'tab-active' : 'text-slate-400'}">내 일기</button><button onclick="changeTab('public')" class="flex-none px-4 py-3 text-sm ${activeTab === 'public' ? 'tab-active' : 'text-slate-400'}">공개일기</button><button onclick="changeTab('store')" class="flex-none px-4 py-3 text-sm ${activeTab === 'store' ? 'tab-active' : 'text-slate-400'}">스토어</button></div></nav><div id="content-area" class="flex-1 overflow-y-auto"></div><button onclick="renderWrite()" class="fixed bottom-8 right-8 w-14 h-14 bg-teal-500 text-white rounded-full shadow-2xl flex items-center justify-center text-xl z-40 transition hover:scale-110"><i class="fas fa-edit"></i></button>`;
             updateContent();
         }
 
-        window.changeTab = (tab) => { 
-            activeTab = tab; 
-            history.pushState({ tab: tab }, '', `#${tab}`); // History API 적용
-            renderLayout(); 
-        };
+        window.changeTab = (tab) => { activeTab = tab; history.pushState({ tab }, '', `#${tab}`); renderLayout(); };
 
         async function updateContent() {
             const area = document.getElementById('content-area');
             if (activeTab === 'home') renderHome(area);
             else if (activeTab === 'diary') renderDiaryList(area, 'private');
             else if (activeTab === 'public') renderDiaryList(area, 'public');
-            else if (activeTab === 'talk') area.innerHTML = '<div class="py-20 text-center text-slate-400">커뮤니티 준비 중입니다!</div>';
-            else if (activeTab === 'store') area.innerHTML = '<div class="py-20 text-center text-slate-400">스토어 준비 중입니다!</div>';
+            else if (activeTab === 'store') area.innerHTML = '<div class="py-20 text-center text-slate-400">스토어 준비 중입니다.</div>';
         }
 
         async function renderHome(container) {
-            const diaries = await getDocs(query(collection(db, "diaries"), where("userId", "==", currentUser.uid)));
-            const diaryCount = diaries.size;
-            
-            const birthDate = new Date(petData.birthDate);
-            const today = new Date();
-            const diffDays = Math.floor((today - birthDate) / (1000 * 60 * 60 * 24)) + 1;
-            
-            const daysLeft = 100 - diaryCount;
-            const targetDate = new Date();
-            targetDate.setDate(today.getDate() + daysLeft);
-            const targetStr = targetDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+            const snap = await getDocs(query(collection(db, "diaries"), where("userId", "==", currentUser.uid)));
+            // 생성 날짜 기준 중복 제거 카운팅 (수정사항 7 반영)
+            const uniqueDates = new Set();
+            snap.forEach(doc => {
+                const date = new Date(doc.data().timestamp).toLocaleDateString();
+                uniqueDates.add(date);
+            });
+            const diaryCount = uniqueDates.size;
+            const diffDays = Math.floor((Date.now() - new Date(petData.birthDate)) / 86400000) + 1;
 
-            container.innerHTML = `
-                <div class="p-6 animate-fade-in space-y-6">
-                    <div class="relative w-full aspect-square rounded-[3rem] overflow-hidden shadow-2xl">
-                        <img src="${petData.profileImageUrl || 'https://via.placeholder.com/400'}" class="w-full h-full object-cover">
-                        <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                        <div class="absolute bottom-8 left-8 text-white">
-                            <h2 class="text-3xl font-bold mb-1">${petData.name}</h2>
-                            <p class="text-teal-300 font-bold">생후 ${diffDays}일째${petData.focusArea ? ` · ${petData.focusArea} 집중관리` : ''}</p>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="bg-teal-50 p-6 rounded-[2rem] border border-teal-100">
-                            <p class="text-xs text-teal-600 font-bold mb-1">작성한 일기</p>
-                            <p class="text-2xl font-black text-teal-800">${diaryCount}<span class="text-sm font-normal ml-1">일차</span></p>
-                        </div>
-                        <div class="bg-orange-50 p-6 rounded-[2rem] border border-orange-100">
-                            <p class="text-xs text-orange-600 font-bold mb-1">100일 완성 예정</p>
-                            <p class="text-lg font-black text-orange-800">${targetStr}</p>
-                        </div>
-                    </div>
-                </div>
-            `;
+            container.innerHTML = `<div class="p-6 animate-fade-in space-y-6"><div class="relative w-full aspect-square rounded-[3rem] overflow-hidden shadow-2xl"><img src="${petData.profileImageUrl || 'https://via.placeholder.com/400'}" class="w-full h-full object-cover"><div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div><div class="absolute bottom-8 left-8 text-white"><h2 class="text-3xl font-bold mb-1">${petData.name}</h2><p class="text-teal-300 font-bold">생후 ${diffDays}일째 · ${petData.focusArea}</p></div></div><div class="grid grid-cols-2 gap-4"><div class="bg-teal-50 p-6 rounded-[2rem] border border-teal-100"><p class="text-xs text-teal-600 font-bold mb-1">작성한 일기</p><p class="text-2xl font-black text-teal-800">${diaryCount}<span class="text-sm font-normal ml-1">일차</span></p></div><div class="bg-orange-50 p-6 rounded-[2rem] border border-orange-100"><p class="text-xs text-orange-600 font-bold mb-1">목표</p><p class="text-lg font-black text-orange-800">100일 완성</p></div></div></div>`;
         }
 
         async function renderDiaryList(container, type) {
-            container.innerHTML = '<p class="py-20 text-center text-slate-300">기록을 찾는 중...</p>';
-            let q = type === 'private' ? 
-                query(collection(db, "diaries"), where("userId", "==", currentUser.uid)) : 
-                query(collection(db, "diaries"), where("isPublic", "==", true));
-            
+            let q = (type === 'private') ? query(collection(db, "diaries"), where("userId", "==", currentUser.uid)) : query(collection(db, "diaries"), where("isPublic", "==", true));
             const snap = await getDocs(q);
             container.innerHTML = '';
-            
-            if (snap.empty) {
-                container.innerHTML = '<div class="py-20 text-center text-slate-400">아직 일기가 없습니다.</div>';
-                return;
-            }
-
-            let list = [];
-            snap.forEach(d => list.push({id: d.id, ...d.data()}));
+            let list = []; snap.forEach(d => list.push({id: d.id, ...d.data()}));
             list.sort((a,b) => b.timestamp - a.timestamp);
-
-            const grid = document.createElement('div');
-            grid.className = "p-6 grid grid-cols-1 gap-6 animate-fade-in";
-            
+            const grid = document.createElement('div'); grid.className = "p-6 grid gap-6";
             list.forEach(item => {
-                const card = document.createElement('div');
-                card.className = "bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 cursor-pointer active:scale-95 transition";
+                const card = document.createElement('div'); card.className = "bg-white rounded-3xl overflow-hidden shadow-sm border cursor-pointer";
                 card.onclick = () => showDetail(item);
-                card.innerHTML = `
-                    ${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-56 object-cover">` : ''}
-                    <div class="p-5">
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="text-[10px] font-bold px-2 py-1 bg-slate-100 rounded-full text-slate-500">${new Date(item.timestamp).toLocaleDateString()}</span>
-                            ${item.isPublic ? '<span class="text-[10px] text-teal-500 font-bold">공개됨</span>' : ''}
-                        </div>
-                        <p class="text-slate-700 text-sm leading-relaxed line-clamp-3">${item.content}</p>
-                    </div>
-                `;
+                card.innerHTML = `${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-48 object-cover">` : ''}<div class="p-5"><span class="text-[10px] bg-slate-100 px-2 py-1 rounded-full text-slate-500">${new Date(item.timestamp).toLocaleDateString()}</span><p class="text-slate-700 text-sm mt-2 line-clamp-3">${item.content}</p></div>`;
                 grid.appendChild(card);
             });
             container.appendChild(grid);
         }
 
-        window.showDetail = function(item) {
+        window.showDetail = (item) => {
             const modal = document.createElement('div');
-            modal.className = "fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 animate-fade-in";
-            modal.innerHTML = `
-                <div class="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden max-h-[85vh] flex flex-col shadow-2xl">
-                    ${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-80 object-cover">` : ''}
-                    <div class="p-8 overflow-y-auto">
-                        <div class="flex justify-between items-center mb-6">
-                            <span class="text-xs font-bold text-teal-600">${new Date(item.timestamp).toLocaleDateString()}</span>
-                            <div class="flex gap-3">
-                                ${item.userId === currentUser.uid ? `
-                                    <button onclick='renderWrite(${JSON.stringify(item).replace(/'/g, "&apos;")})' class="text-xs font-bold text-slate-400">수정</button>
-                                    <button onclick="deleteDiary('${item.id}')" class="text-xs font-bold text-red-400">삭제</button>
-                                ` : ''}
-                                <button onclick="this.closest('.fixed').remove()" class="text-slate-300"><i class="fas fa-times"></i></button>
-                            </div>
-                        </div>
-                        <p class="text-slate-800 whitespace-pre-wrap leading-relaxed text-sm">${item.content}</p>
-                    </div>
-                </div>
-            `;
+            modal.className = "fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4";
+            modal.innerHTML = `<div class="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden max-h-[85vh] flex flex-col shadow-2xl">${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-64 object-cover">` : ''}<div class="p-8 overflow-y-auto"><div class="flex justify-between mb-4"><span class="text-xs font-bold text-teal-600">${new Date(item.timestamp).toLocaleDateString()}</span><div class="flex gap-3">${item.userId === currentUser.uid ? `<button onclick='renderWrite(${JSON.stringify(item)})' class="text-xs font-bold text-slate-400">수정</button><button onclick="deleteDiary('${item.id}')" class="text-xs font-bold text-red-400">삭제</button>` : ''}<button onclick="this.closest('.fixed').remove()" class="text-slate-300"><i class="fas fa-times"></i></button></div></div><p class="text-slate-800 text-sm leading-relaxed">${item.content}</p></div></div>`;
             document.body.appendChild(modal);
-        }
+        };
 
-        window.renderWrite = function(editData = null) {
+        window.renderWrite = (editData = null) => {
             const openModal = document.querySelector('.fixed.bg-black\\/80');
             if(openModal) openModal.remove();
-
-            appDiv.innerHTML = `
-                <div class="p-8 animate-fade-in flex-1">
-                    <div class="flex justify-between items-center mb-10">
-                        <button onclick="renderLayout()" class="text-slate-400"><i class="fas fa-arrow-left"></i></button>
-                        <h2 class="font-bold text-lg">${editData ? '일기 수정' : '오늘의 기록'}</h2>
-                        <button onclick="saveDiary('${editData ? editData.id : ''}')" class="text-teal-600 font-bold">저장</button>
-                    </div>
-                    <div class="space-y-6">
-                        <div id="imagePreview" onclick="document.getElementById('fileInput').click()" class="w-full h-64 bg-slate-50 rounded-[2rem] flex flex-col items-center justify-center border-2 border-dashed border-slate-200 cursor-pointer overflow-hidden transition hover:bg-slate-100">
-                            ${editData && editData.imageUrl ? `<img src="${editData.imageUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-camera text-3xl text-slate-200 mb-2"></i><span class="text-slate-400 text-xs">사진 추가</span>'}
-                        </div>
-                        <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="previewImage(event)">
-                        <textarea id="diaryContent" rows="8" placeholder="${petData.name}와 어떤 하루를 보내셨나요?" class="w-full p-6 bg-slate-50 rounded-[2rem] outline-none border-none resize-none text-slate-700 text-sm leading-relaxed">${editData ? editData.content : ''}</textarea>
-                        <div class="flex items-center gap-3 px-2">
-                            <input type="checkbox" id="isPublic" class="w-5 h-5 rounded accent-teal-500" ${editData && editData.isPublic ? 'checked' : ''}>
-                            <label for="isPublic" class="text-sm font-bold text-slate-600">이 일기를 모두에게 공개할래요</label>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
+            appDiv.innerHTML = `<div class="p-8 animate-fade-in flex-1"><div class="flex justify-between items-center mb-10"><button onclick="renderLayout()" class="text-slate-400"><i class="fas fa-arrow-left"></i></button><h2 class="font-bold text-lg">기록하기</h2><button onclick="saveDiary('${editData ? editData.id : ''}')" class="text-teal-600 font-bold">저장</button></div><div class="space-y-6"><div id="imagePreview" onclick="document.getElementById('fileInput').click()" class="w-full h-64 bg-slate-50 rounded-[2rem] flex flex-col items-center justify-center border-2 border-dashed border-slate-200 overflow-hidden">${editData && editData.imageUrl ? `<img src="${editData.imageUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-camera text-slate-200"></i>'}</div><input type="file" id="fileInput" class="hidden" accept="image/*" onchange="previewImage(event)"><textarea id="diaryContent" rows="8" class="w-full p-6 bg-slate-50 rounded-[2rem] outline-none text-sm">${editData ? editData.content : ''}</textarea><div class="flex items-center gap-3"><input type="checkbox" id="isPublic" class="w-5 h-5 accent-teal-500" ${editData && editData.isPublic ? 'checked' : ''}><label for="isPublic" class="text-sm font-bold text-slate-600">공개하기</label></div></div></div>`;
+        };
 
         window.renderEditPet = function() {
             appDiv.innerHTML = `
                 <div class="p-8 animate-fade-in flex-1">
                     <div class="flex justify-between items-center mb-10">
                         <button onclick="renderLayout()" class="text-slate-400"><i class="fas fa-arrow-left"></i></button>
-                        <h2 class="font-bold text-lg">우리 아이 정보 수정</h2>
+                        <h2 class="font-bold text-lg">정보 수정</h2>
                         <button onclick="savePetInfoUpdate()" class="text-teal-600 font-bold">완료</button>
                     </div>
                     <div class="space-y-6">
-                        <div id="profilePreview" onclick="document.getElementById('profileInput').click()" class="w-40 h-40 mx-auto bg-slate-50 rounded-full flex flex-col items-center justify-center border-2 border-dashed border-slate-200 cursor-pointer overflow-hidden relative group">
+                        <div id="profilePreview" onclick="document.getElementById('profileInput').click()" class="w-40 h-40 mx-auto bg-slate-50 rounded-full border-2 border-dashed border-slate-200 overflow-hidden">
                             <img src="${petData.profileImageUrl || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
-                            <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                                <i class="fas fa-camera text-white"></i>
-                            </div>
                         </div>
                         <input type="file" id="profileInput" class="hidden" accept="image/*" onchange="previewProfileImage(event)">
+                        <input id="editPetName" type="text" value="${petData.name}" class="w-full p-4 bg-slate-50 rounded-xl outline-none">
+                        <input id="editPetBirth" type="date" value="${petData.birthDate}" class="w-full p-4 bg-slate-50 rounded-xl outline-none">
                         
-                        <div class="space-y-4">
-                            <div>
-                                <label class="text-xs font-bold text-slate-400 ml-2">아이 이름</label>
-                                <input id="editPetName" type="text" value="${petData.name}" class="w-full p-4 bg-slate-50 rounded-xl outline-none mt-1">
-                            </div>
-                            <div>
-                                <label class="text-xs font-bold text-slate-400 ml-2">태어난 날 (생일)</label>
-                                <input id="editPetBirth" type="date" value="${petData.birthDate}" class="w-full p-4 bg-slate-50 rounded-xl outline-none mt-1">
-                            </div>
+                        <div class="pt-10 border-t border-slate-100">
+                            <button onclick="confirmWithdrawal()" class="w-full p-4 text-red-400 text-sm font-bold bg-red-50 rounded-2xl">탈퇴하기</button>
                         </div>
                     </div>
                 </div>
             `;
-        }
+        };
 
-        window.savePetInfoUpdate = async () => {
-            const name = document.getElementById('editPetName').value;
-            const birthDate = document.getElementById('editPetBirth').value;
-            const file = document.getElementById('profileInput').files[0];
-            
-            let profileImageUrl = petData.profileImageUrl;
-            if (file) {
-                const storageRef = ref(storage, `profiles/${currentUser.uid}`);
-                const snap = await uploadBytes(storageRef, file);
-                profileImageUrl = await getDownloadURL(snap.ref);
-            }
-
-            await updateDoc(doc(db, "pets", currentUser.uid), { name, birthDate, profileImageUrl });
-            await refreshPetData();
-            renderLayout();
+        // 회원 탈퇴 처리 (수정사항 4 반영)
+        window.confirmWithdrawal = async () => {
+            const pwd = prompt("탈퇴하시려면 비밀번호를 한 번 더 입력해주세요.");
+            if (!pwd) return;
+            try {
+                const credential = EmailAuthProvider.credential(currentUser.email, pwd);
+                await reauthenticateWithCredential(currentUser, credential);
+                if (confirm("모든 정보가 삭제됩니다. 정말 탈퇴하시겠습니까?")) {
+                    const batch = writeBatch(db);
+                    batch.delete(doc(db, "pets", currentUser.uid));
+                    batch.delete(doc(db, "users", currentUser.uid));
+                    const diaries = await getDocs(query(collection(db, "diaries"), where("userId", "==", currentUser.uid)));
+                    diaries.forEach(d => batch.delete(d.ref));
+                    await batch.commit();
+                    await deleteUser(currentUser);
+                    alert("그동안 이용해주셔서 감사합니다.");
+                    location.reload();
+                }
+            } catch (e) { alert("비밀번호가 틀렸거나 탈퇴 처리에 실패했습니다."); }
         };
 
         window.saveDiary = async (id = '') => {
             const content = document.getElementById('diaryContent').value;
-            const isPublic = document.getElementById('isPublic').checked;
             const file = document.getElementById('fileInput').files[0];
-            if (!content) return alert("내용을 입력해 주세요.");
-
             let imageUrl = '';
             if (file) {
-                const storageRef = ref(storage, `diaries/${currentUser.uid}/${Date.now()}`);
-                const snap = await uploadBytes(storageRef, file);
+                const snap = await uploadBytes(ref(storage, `diaries/${currentUser.uid}/${Date.now()}`), file);
                 imageUrl = await getDownloadURL(snap.ref);
             }
-
-            const diaryData = {
-                content, isPublic, timestamp: Date.now(), userId: currentUser.uid
-            };
-            if(imageUrl) diaryData.imageUrl = imageUrl;
-
-            if(id) await updateDoc(doc(db, "diaries", id), diaryData);
+            const diaryData = { content, isPublic: document.getElementById('isPublic').checked, timestamp: Date.now(), userId: currentUser.uid };
+            if (imageUrl) diaryData.imageUrl = imageUrl;
+            if (id) await updateDoc(doc(db, "diaries", id), diaryData);
             else await addDoc(collection(db, "diaries"), diaryData);
-            
             renderLayout();
         };
 
-        window.deleteDiary = async (id) => {
-            if(!confirm("정말 이 일기를 지울까요?")) return;
-            await deleteDoc(doc(db, "diaries", id));
-            document.querySelector('.fixed.bg-black\\/80').remove();
-            renderLayout();
+        window.savePetInfoUpdate = async () => {
+            const file = document.getElementById('profileInput').files[0];
+            let profileImageUrl = petData.profileImageUrl;
+            if (file) {
+                const snap = await uploadBytes(ref(storage, `profiles/${currentUser.uid}`), file);
+                profileImageUrl = await getDownloadURL(snap.ref);
+            }
+            await updateDoc(doc(db, "pets", currentUser.uid), { name: document.getElementById('editPetName').value, birthDate: document.getElementById('editPetBirth').value, profileImageUrl });
+            await refreshPetData();
         };
 
         window.handleLogout = () => signOut(auth);
         window.previewImage = (e) => {
             const reader = new FileReader();
-            reader.onload = () => {
-                document.getElementById('imagePreview').innerHTML = `<img src="${reader.result}" class="w-full h-full object-cover">`;
-            };
+            reader.onload = () => { document.getElementById('imagePreview').innerHTML = `<img src="${reader.result}" class="w-full h-full object-cover">`; };
             reader.readAsDataURL(e.target.files[0]);
         };
         window.previewProfileImage = (e) => {
             const reader = new FileReader();
-            reader.onload = () => {
-                document.getElementById('profilePreview').querySelector('img').src = reader.result;
-            };
+            reader.onload = () => { document.getElementById('profilePreview').querySelector('img').src = reader.result; };
             reader.readAsDataURL(e.target.files[0]);
         };
-
     </script>
 </body>
 </html>
