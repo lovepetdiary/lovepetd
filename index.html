@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>펫다이어리 - 관리자 모드</title>
+    <title>펫다이어리 - 클라우드 완결판</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -11,201 +11,177 @@
         body { font-family: 'Noto Sans KR', sans-serif; -webkit-tap-highlight-color: transparent; text-align: left; }
         .slide-in { animation: slideIn 0.3s ease-out; }
         @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        input, select, textarea { font-size: 16px !important; } /* 모바일 줌 방지 */
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
 
-    <div id="app" class="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative overflow-x-hidden">
-        </div>
+    <div id="app" class="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative overflow-x-hidden"></div>
 
-    <script>
-        // --- 데이터 관리 (LocalStorage 활용) ---
-        let users = JSON.parse(localStorage.getItem('pet_users')) || [];
-        let currentUser = JSON.parse(localStorage.getItem('current_user')) || null;
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-        const app = document.getElementById('app');
+        // --- 대표님의 실제 설정값 적용 완료 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDn6hcoBuDPlv5pf-D3nF4tVa309H6ydvc",
+            authDomain: "petdiary-595a2.firebaseapp.com",
+            projectId: "petdiary-595a2",
+            storageBucket: "petdiary-595a2.firebasestorage.app",
+            messagingSenderId: "693055914176",
+            appId: "1:693055914176:web:e98a698d7cade73a9ead25",
+            measurementId: "G-2FEP68LDJK"
+        };
 
-        // --- 핵심 로직: 작성일 기준 Day 카운팅 ---
-        function getUniqueDayCount(diaries) {
-            if (!diaries || diaries.length === 0) return 0;
-            // 'selectedDate'가 아닌 실제 'createdDate'(작성 시점 날짜) 기준으로 카운트
-            const uniqueCreatedDates = new Set(diaries.map(d => d.createdDate));
-            return uniqueCreatedDates.size;
-        }
+        const firebaseApp = initializeApp(firebaseConfig);
+        const auth = getAuth(firebaseApp);
+        const db = getFirestore(firebaseApp);
+        const storage = getStorage(firebaseApp);
 
-        function render() {
-            // 1. 로그인 체크
-            if (!currentUser) {
+        let currentUser = null;
+        const appElement = document.getElementById('app');
+
+        // 로그인 상태 감지
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const userDoc = await getDoc(doc(db, "users", user.uid));
+                currentUser = { uid: user.uid, ...userDoc.data() };
+                renderDashboard();
+            } else {
+                currentUser = null;
                 renderAuth();
-                return;
             }
-            
-            // 2. 메인 대시보드
-            renderDashboard();
-        }
+        });
 
-        // --- 인증 화면 (로그인/회원가입) ---
-        function renderAuth(isSignup = false) {
-            app.innerHTML = `
-                <div class="flex flex-col items-center justify-center min-h-screen p-10 slide-in">
-                    <div class="w-16 h-16 bg-teal-500 rounded-2xl flex items-center justify-center text-white mb-6 shadow-lg">
-                        <i class="fas fa-lock text-2xl"></i>
-                    </div>
-                    <h1 class="text-2xl font-black text-slate-900 mb-2">${isSignup ? '회원가입' : '로그인'}</h1>
-                    <p class="text-slate-400 text-sm mb-8">${isSignup ? '새로운 계정을 만드세요' : '기록을 보려면 로그인하세요'}</p>
-                    
+        // --- 화면 렌더링 ---
+        window.renderAuth = (isSignup = false) => {
+            appElement.innerHTML = `
+                <div class="flex flex-col items-center justify-center min-h-screen p-10 slide-in text-center">
+                    <div class="w-16 h-16 bg-teal-500 rounded-2xl flex items-center justify-center text-white mb-6 shadow-lg"><i class="fas fa-paw text-2xl"></i></div>
+                    <h1 class="text-2xl font-black text-slate-900 mb-2">${isSignup ? '회원가입' : '반가워요!'}</h1>
+                    <p class="text-slate-400 text-sm mb-8">${isSignup ? '새 이메일로 가입하세요' : '로그인하고 기록을 확인하세요'}</p>
                     <div class="w-full space-y-4">
-                        <input type="text" id="authId" placeholder="아이디" class="w-full bg-slate-50 p-4 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 border-none">
-                        <input type="password" id="authPw" placeholder="비밀번호" class="w-full bg-slate-50 p-4 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 border-none">
-                        
-                        <button onclick="${isSignup ? 'handleSignup()' : 'handleLogin()'}" class="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl">
-                            ${isSignup ? '가입 완료' : '로그인'}
-                        </button>
-                        
-                        <button onclick="renderAuth(${!isSignup})" class="w-full text-slate-400 text-sm font-medium py-2">
-                            ${isSignup ? '이미 계정이 있나요? 로그인' : '계정이 없으신가요? 가입하기'}
-                        </button>
+                        <input type="email" id="email" placeholder="이메일" class="w-full bg-slate-50 p-4 rounded-xl outline-none border-none">
+                        <input type="password" id="password" placeholder="비밀번호" class="w-full bg-slate-50 p-4 rounded-xl outline-none border-none">
+                        <button onclick="${isSignup ? 'handleSignup()' : 'handleLogin()'}" class="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl">${isSignup ? '시작하기' : '로그인'}</button>
+                        <button onclick="renderAuth(${!isSignup})" class="w-full text-slate-400 text-xs mt-4 underline">${isSignup ? '기존 계정으로 로그인' : '처음이신가요? 가입하기'}</button>
                     </div>
                 </div>
             `;
-        }
+        };
 
-        // --- 메인 화면 ---
-        function renderDashboard() {
-            const dayCount = getUniqueDayCount(currentUser.diaries);
-            app.innerHTML = `
+        window.renderDashboard = () => {
+            const diaries = currentUser.diaries || [];
+            const dayCount = new Set(diaries.map(d => d.createdDate)).size;
+            appElement.innerHTML = `
                 <div class="min-h-screen pb-24 slide-in">
                     <header class="bg-white px-6 py-5 flex justify-between items-center sticky top-0 z-20 border-b border-slate-100">
-                        <h1 class="text-lg font-black text-slate-900">우리 아이 기록</h1>
+                        <h1 class="text-lg font-black text-slate-900">펫다이어리</h1>
                         <button onclick="handleLogout()" class="text-slate-300 text-xs font-bold">로그아웃</button>
                     </header>
-
                     <div class="p-6">
                         <div class="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative">
-                            <p class="text-teal-400 font-bold text-[10px] uppercase tracking-widest mb-1">100일 챌린지</p>
-                            <p class="text-3xl font-black mb-4">Day ${dayCount}/100</p>
+                            <p class="text-teal-400 font-bold text-[10px] uppercase mb-1 tracking-widest">100일 챌린지</p>
+                            <p class="text-3xl font-black mb-4 italic text-left">Day ${dayCount}/100</p>
                             <div class="w-full bg-white/10 h-2 rounded-full overflow-hidden mb-4">
-                                <div class="bg-teal-400 h-full transition-all duration-500" style="width: ${Math.max(3, (dayCount / 100) * 100)}%"></div>
+                                <div class="bg-teal-400 h-full transition-all duration-700" style="width: ${Math.max(3, (dayCount/100)*100)}%"></div>
                             </div>
-                            <p class="text-white/40 text-[10px]">총 <b>${currentUser.diaries.length}개</b>의 소중한 기록</p>
+                            <p class="text-white/40 text-[10px] text-left italic">총 ${diaries.length}개의 기록</p>
                         </div>
                     </div>
-
-                    <div class="px-6 space-y-6">
-                        <h3 class="font-black text-slate-900">기록 타임라인</h3>
-                        <div id="diaryList" class="space-y-6">
-                            ${currentUser.diaries.length === 0 ? '<div class="py-20 text-center text-slate-300 font-bold">첫 기록을 남겨보세요!</div>' : ''}
-                        </div>
-                    </div>
-
+                    <div class="px-6 space-y-6" id="diaryList"></div>
                     <div class="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-6 z-30">
-                        <button onclick="openModal()" class="bg-slate-900 text-white w-full py-5 rounded-2xl font-black text-lg shadow-2xl active:scale-95 transition-all">
-                            <i class="fas fa-plus mr-2"></i> 오늘 기록하기
-                        </button>
+                        <button onclick="openModal()" class="bg-slate-900 text-white w-full py-5 rounded-2xl font-black text-lg shadow-2xl active:scale-95 transition-all"><i class="fas fa-camera mr-2"></i> 기록하기</button>
                     </div>
-
                     <div id="modal" class="fixed inset-0 bg-slate-900/60 z-50 hidden items-end justify-center p-4 backdrop-blur-sm">
-                        <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl max-h-[92vh] overflow-y-auto">
-                            <div class="flex justify-between items-center mb-6">
-                                <h2 class="text-xl font-black text-slate-900">오늘 어떤 일이 있었나요?</h2>
-                                <button onclick="closeModal()" class="text-slate-400"><i class="fas fa-times"></i></button>
-                            </div>
-                            
+                        <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+                            <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-black text-slate-900">오늘의 기록</h2><button onclick="closeModal()"><i class="fas fa-times text-slate-300"></i></button></div>
                             <div class="space-y-6">
-                                <div>
-                                    <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block">날짜 선택</label>
-                                    <input type="date" id="selectedDate" class="w-full bg-slate-50 p-4 rounded-xl border-none outline-none">
-                                </div>
-
-                                <div id="imagePreview" onclick="document.getElementById('fileInput').click()" class="w-full bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl h-40 flex flex-col items-center justify-center cursor-pointer overflow-hidden">
-                                    <i class="fas fa-camera text-slate-200 text-2xl mb-2"></i>
-                                    <p class="text-slate-400 text-[10px] font-bold">사진 추가</p>
+                                <input type="date" id="selectedDate" class="w-full bg-slate-50 p-4 rounded-xl border-none outline-none">
+                                <div id="imagePreview" onclick="document.getElementById('fileInput').click()" class="w-full bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl h-40 flex flex-col items-center justify-center overflow-hidden">
+                                    <i class="fas fa-camera text-slate-200 text-2xl mb-2"></i><p class="text-slate-400 text-[10px] font-bold">사진 선택</p>
                                     <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleImage(this)">
                                 </div>
-
                                 <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block">배변 상태</label>
-                                        <select id="poopStatus" class="w-full bg-slate-50 p-4 rounded-xl border-none outline-none text-sm">
-                                            <option value="정상">🟢 정상</option>
-                                            <option value="묽음">🟡 묽음</option>
-                                            <option value="딱딱함">🟠 딱딱함</option>
-                                            <option value="안함">⚪ 안함</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block">산책 여부</label>
-                                        <div class="flex bg-slate-50 rounded-xl p-1">
-                                            <button id="walkY" onclick="setWalk(true)" class="flex-1 py-3 rounded-lg font-bold text-xs bg-white shadow-sm">YES</button>
-                                            <button id="walkN" onclick="setWalk(false)" class="flex-1 py-3 rounded-lg font-bold text-xs text-slate-400">NO</button>
-                                        </div>
-                                    </div>
+                                    <select id="poop" class="w-full bg-slate-50 p-4 rounded-xl text-sm border-none outline-none">
+                                        <option value="정상">🟢 배변 정상</option><option value="묽음">🟡 배변 묽음</option><option value="안함">⚪ 안함</option>
+                                    </select>
+                                    <select id="walk" class="w-full bg-slate-50 p-4 rounded-xl text-sm border-none outline-none">
+                                        <option value="true">🐕 산책 완료</option><option value="false">🏠 실내 휴식</option>
+                                    </select>
                                 </div>
-
-                                <div>
-                                    <label class="text-[10px] font-black text-slate-400 uppercase mb-2 block">일기 내용</label>
-                                    <textarea id="diaryContent" class="w-full bg-slate-50 rounded-xl p-4 h-24 outline-none border-none text-sm" placeholder="오늘의 메모..."></textarea>
-                                </div>
-
-                                <button onclick="addDiary()" class="w-full bg-teal-500 text-white py-5 rounded-2xl font-black shadow-xl">저장하기</button>
+                                <textarea id="content" class="w-full bg-slate-50 rounded-xl p-4 h-24 border-none outline-none text-sm" placeholder="무슨 일이 있었나요?"></textarea>
+                                <button id="saveBtn" onclick="addDiary()" class="w-full bg-teal-500 text-white py-5 rounded-2xl font-black shadow-xl">구글 서버에 저장</button>
                             </div>
                         </div>
                     </div>
                 </div>
             `;
-            // 날짜 초기값 세팅
             document.getElementById('selectedDate').value = new Date().toISOString().split('T')[0];
             renderDiaries();
-        }
+        };
 
-        // --- 데이터 처리 함수들 ---
-        let tempImage = null;
-        let tempWalk = true;
+        // --- 핵심 기능 ---
+        window.handleSignup = async () => {
+            const e = document.getElementById('email').value, p = document.getElementById('password').value;
+            if(!e || !p) return alert("이메일과 비밀번호를 입력해주세요.");
+            try {
+                const cred = await createUserWithEmailAndPassword(auth, e, p);
+                await setDoc(doc(db, "users", cred.user.uid), { email: e, diaries: [] });
+                alert("회원가입 완료!");
+            } catch (err) { alert("오류: " + err.message); }
+        };
 
-        function setWalk(val) {
-            tempWalk = val;
-            document.getElementById('walkY').className = val ? "flex-1 py-3 rounded-lg font-bold text-xs bg-white shadow-sm" : "flex-1 py-3 rounded-lg font-bold text-xs text-slate-400";
-            document.getElementById('walkN').className = !val ? "flex-1 py-3 rounded-lg font-bold text-xs bg-white shadow-sm" : "flex-1 py-3 rounded-lg font-bold text-xs text-slate-400";
-        }
+        window.handleLogin = async () => {
+            const e = document.getElementById('email').value, p = document.getElementById('password').value;
+            try { await signInWithEmailAndPassword(auth, e, p); } catch (err) { alert("로그인 실패: " + err.message); }
+        };
 
-        function handleImage(input) {
-            if (input.files && input.files[0]) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    tempImage = e.target.result;
-                    document.getElementById('imagePreview').innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover">`;
-                };
-                reader.readAsDataURL(input.files[0]);
-            }
-        }
+        window.handleLogout = () => signOut(auth);
 
-        function addDiary() {
-            const diary = {
-                id: Date.now(),
-                createdDate: new Date().toISOString().split('T')[0], // 실제 생성 날짜 (Day 카운팅용)
-                selectedDate: document.getElementById('selectedDate').value,
-                poop: document.getElementById('poopStatus').value,
-                walk: tempWalk,
-                content: document.getElementById('diaryContent').value,
-                image: tempImage
+        let tempImg = null;
+        window.handleImage = (input) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                tempImg = e.target.result;
+                document.getElementById('imagePreview').innerHTML = `<img src="${tempImg}" class="w-full h-full object-cover">`;
             };
-            
-            currentUser.diaries.push(diary);
-            updateUser();
-            closeModal();
-            render();
-        }
+            reader.readAsDataURL(input.files[0]);
+        };
 
-        function renderDiaries() {
+        window.addDiary = async () => {
+            const btn = document.getElementById('saveBtn');
+            btn.disabled = true; btn.innerText = "업로드 중...";
+            try {
+                let imgUrl = "";
+                if (tempImg) {
+                    const imgRef = ref(storage, `images/${currentUser.uid}/${Date.now()}`);
+                    await uploadString(imgRef, tempImg, 'data_url');
+                    imgUrl = await getDownloadURL(imgRef);
+                }
+                const newDiary = {
+                    createdDate: new Date().toISOString().split('T')[0],
+                    selectedDate: document.getElementById('selectedDate').value,
+                    poop: document.getElementById('poop').value,
+                    walk: document.getElementById('walk').value === "true",
+                    content: document.getElementById('content').value,
+                    image: imgUrl
+                };
+                await updateDoc(doc(db, "users", currentUser.uid), { diaries: arrayUnion(newDiary) });
+                currentUser.diaries.push(newDiary);
+                closeModal();
+                renderDashboard();
+            } catch (err) { alert("저장 실패: " + err.message); btn.disabled = false; btn.innerText = "다시 저장"; }
+        };
+
+        window.renderDiaries = () => {
             const list = document.getElementById('diaryList');
-            if(!list) return;
-            const sorted = [...currentUser.diaries].sort((a, b) => new Date(b.selectedDate) - new Date(a.selectedDate));
-            
+            const sorted = [...(currentUser.diaries || [])].reverse();
             list.innerHTML = sorted.map(d => `
                 <div class="bg-white rounded-[2rem] border border-slate-50 shadow-sm overflow-hidden slide-in">
                     ${d.image ? `<img src="${d.image}" class="w-full h-52 object-cover">` : ''}
-                    <div class="p-6">
+                    <div class="p-6 text-left">
                         <div class="flex justify-between items-start mb-3">
                             <p class="text-[10px] font-black text-teal-500 uppercase tracking-widest">${d.selectedDate}</p>
                             <div class="flex gap-2">
@@ -213,57 +189,15 @@
                                 <span class="bg-slate-50 px-2 py-1 rounded text-[9px] font-bold text-slate-500">${d.walk ? '🐕 산책' : '🏠 쉼'}</span>
                             </div>
                         </div>
-                        <p class="text-sm text-slate-700 font-medium leading-relaxed">${d.content || '기록을 남겼습니다.'}</p>
+                        <p class="text-sm text-slate-700 font-medium leading-relaxed">${d.content || '기록이 없습니다.'}</p>
                     </div>
                 </div>
             `).join('');
-        }
+        };
 
-        // --- 회원가입/로그인 처리 ---
-        function handleSignup() {
-            const id = document.getElementById('authId').value;
-            const pw = document.getElementById('authPw').value;
-            if(!id || !pw) return alert('모두 입력해주세요.');
-            if(users.find(u => u.id === id)) return alert('이미 존재하는 아이디입니다.');
-            
-            users.push({ id, pw, diaries: [] });
-            localStorage.setItem('pet_users', JSON.stringify(users));
-            alert('가입되었습니다! 로그인해주세요.');
-            renderAuth(false);
-        }
+        window.openModal = () => { tempImg = null; document.getElementById('modal').style.display = 'flex'; };
+        window.closeModal = () => { document.getElementById('modal').style.display = 'none'; };
 
-        function handleLogin() {
-            const id = document.getElementById('authId').value;
-            const pw = document.getElementById('authPw').value;
-            const user = users.find(u => u.id === id && u.pw === pw);
-            if(!user) return alert('아이디 또는 비밀번호가 틀렸습니다.');
-            
-            currentUser = user;
-            localStorage.setItem('current_user', JSON.stringify(user));
-            render();
-        }
-
-        function handleLogout() {
-            currentUser = null;
-            localStorage.removeItem('current_user');
-            render();
-        }
-
-        function updateUser() {
-            const idx = users.findIndex(u => u.id === currentUser.id);
-            users[idx] = currentUser;
-            localStorage.setItem('pet_users', JSON.stringify(users));
-            localStorage.setItem('current_user', JSON.stringify(currentUser));
-        }
-
-        function openModal() { 
-            tempImage = null; 
-            tempWalk = true;
-            document.getElementById('modal').style.display = 'flex'; 
-        }
-        function closeModal() { document.getElementById('modal').style.display = 'none'; }
-
-        render();
     </script>
 </body>
 </html>
