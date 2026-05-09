@@ -20,6 +20,7 @@
         /* 스크롤바 숨김 (댓글 영역 등) */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .fade-transition { transition: opacity 0.5s ease-in-out; }
     </style>
 </head>
 <body>
@@ -57,6 +58,7 @@
         let setupData = { profileImageUrl: '', name: '', birthDate: '', focusArea: '' };
         let backPressCount = 0;
         window.currentPublicSort = 'date';
+        window.homeSlideInterval = null;
 
         window.addEventListener('popstate', (event) => {
             const detailModal = document.getElementById('diaryModal');
@@ -64,6 +66,9 @@
             
             const withdrawModal = document.getElementById('withdrawModal');
             if (withdrawModal) withdrawModal.remove();
+            
+            const profileModal = document.getElementById('profileImgModal');
+            if (profileModal) profileModal.remove();
 
             if (event.state && event.state.tab) {
                 activeTab = event.state.tab;
@@ -339,11 +344,50 @@
 
         function renderLayout() {
             if (!petData) return;
-            appDiv.innerHTML = `<nav class="sticky top-0 bg-white/80 backdrop-blur-md z-30 border-b border-slate-100"><div class="flex justify-between items-center px-6 pt-6 pb-2"><h1 class="text-xl font-bold text-slate-800">PET DIARY</h1><div class="flex gap-4"><button onclick="renderEditPet()" class="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1.5 rounded-full">정보수정</button><button onclick="handleLogout()" class="text-xs font-bold text-slate-400">로그아웃</button></div></div><div class="flex overflow-x-auto no-scrollbar px-2"><button onclick="changeTab('home')" class="flex-none px-4 py-3 text-sm ${activeTab === 'home' ? 'tab-active' : 'text-slate-400'}">메인</button><button onclick="changeTab('diary')" class="flex-none px-4 py-3 text-sm ${activeTab === 'diary' ? 'tab-active' : 'text-slate-400'}">내 일기</button><button onclick="changeTab('public')" class="flex-none px-4 py-3 text-sm ${activeTab === 'public' ? 'tab-active' : 'text-slate-400'}">공개일기</button><button onclick="changeTab('store')" class="flex-none px-4 py-3 text-sm ${activeTab === 'store' ? 'tab-active' : 'text-slate-400'}">스토어</button></div></nav><div id="content-area" class="flex-1 overflow-y-auto pb-20"></div><button onclick="renderWrite()" class="fixed bottom-8 right-8 w-14 h-14 bg-teal-500 text-white rounded-full shadow-2xl flex items-center justify-center text-xl z-40 transition hover:scale-110"><i class="fas fa-edit"></i></button>`;
+            if (window.homeSlideInterval) {
+                clearInterval(window.homeSlideInterval);
+                window.homeSlideInterval = null;
+            }
+            appDiv.innerHTML = `
+                <nav class="sticky top-0 bg-white/80 backdrop-blur-md z-30 border-b border-slate-100">
+                    <div class="flex justify-between items-center px-6 pt-6 pb-2">
+                        <div class="flex items-center gap-2 cursor-pointer" onclick="changeTab('home')">
+                            <i class="fas fa-paw text-2xl text-teal-500"></i>
+                            <img src="${petData.profileImageUrl || 'https://via.placeholder.com/150'}" class="w-8 h-8 rounded-full object-cover shadow-sm ml-1">
+                            <span class="font-bold text-slate-800 text-sm">${petData.name}</span>
+                        </div>
+                        <div class="flex gap-4">
+                            <button onclick="renderEditPet()" class="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1.5 rounded-full">정보수정</button>
+                            <button onclick="handleLogout()" class="text-xs font-bold text-slate-400">로그아웃</button>
+                        </div>
+                    </div>
+                    <div class="flex overflow-x-auto no-scrollbar px-2">
+                        <button onclick="changeTab('diary')" class="flex-none px-4 py-3 text-sm ${activeTab === 'diary' ? 'tab-active' : 'text-slate-400'}">내 일기</button>
+                        <button onclick="changeTab('public')" class="flex-none px-4 py-3 text-sm ${activeTab === 'public' ? 'tab-active' : 'text-slate-400'}">공개일기</button>
+                        <button onclick="changeTab('store')" class="flex-none px-4 py-3 text-sm ${activeTab === 'store' ? 'tab-active' : 'text-slate-400'}">스토어</button>
+                    </div>
+                </nav>
+                <div id="content-area" class="flex-1 overflow-y-auto pb-20"></div>
+                <button onclick="renderWrite()" class="fixed bottom-8 right-8 w-14 h-14 bg-teal-500 text-white rounded-full shadow-2xl flex items-center justify-center text-xl z-40 transition hover:scale-110"><i class="fas fa-edit"></i></button>
+            `;
             updateContent();
         }
 
         window.changeTab = (tab) => { activeTab = tab; history.pushState({ tab }, '', `#${tab}`); renderLayout(); };
+
+        // 프로필 사진 확대 모달
+        window.showProfileModal = (imgUrl, event) => {
+            if(event) event.stopPropagation();
+            const modal = document.createElement('div');
+            modal.id = "profileImgModal";
+            modal.className = "fixed inset-0 bg-black/90 z-[110] flex items-center justify-center p-4 animate-fade-in";
+            modal.onclick = () => modal.remove();
+            modal.innerHTML = `
+                <img src="${imgUrl}" class="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" onclick="event.stopPropagation()">
+                <button class="absolute top-6 right-6 text-white text-3xl" onclick="document.getElementById('profileImgModal').remove()"><i class="fas fa-times"></i></button>
+            `;
+            document.body.appendChild(modal);
+        };
 
         async function updateContent() {
             const area = document.getElementById('content-area');
@@ -358,6 +402,7 @@
             
             let firstDiaryTime = null;
             const uniqueDates = new Set();
+            let diaryImages = [];
             
             snap.forEach(doc => {
                 const data = doc.data();
@@ -366,20 +411,27 @@
                 if (!firstDiaryTime || data.timestamp < firstDiaryTime) {
                     firstDiaryTime = data.timestamp;
                 }
+                if (data.imageUrl) {
+                    diaryImages.push(data.imageUrl);
+                }
             });
             const diaryCount = uniqueDates.size;
             
+            if (diaryImages.length === 0) {
+                diaryImages.push(petData.profileImageUrl || 'https://via.placeholder.com/400');
+            }
+
             const birthDateObj = new Date(petData.birthDate);
             const diffDays = Math.floor((Date.now() - birthDateObj.getTime()) / 86400000) + 1;
             
-            // 100일 D-Day 계산 (첫 일기 기준)
+            // 100일 D-Day 계산
             let hundredDateStr = '-';
             let ddayStr = '기록 없음';
             
             if (firstDiaryTime) {
                 const firstDateObj = new Date(firstDiaryTime);
                 firstDateObj.setHours(0,0,0,0);
-                const hundredDateObj = new Date(firstDateObj.getTime() + 99 * 86400000); // 첫 일기 + 99일 = 100일째
+                const hundredDateObj = new Date(firstDateObj.getTime() + 99 * 86400000); 
                 hundredDateStr = hundredDateObj.getFullYear() + '.' + (hundredDateObj.getMonth()+1).toString().padStart(2, '0') + '.' + hundredDateObj.getDate().toString().padStart(2, '0');
                 
                 const today = new Date();
@@ -393,10 +445,10 @@
 
             container.innerHTML = `
                 <div class="p-6 animate-fade-in space-y-6">
-                    <div class="relative w-full aspect-square rounded-[3rem] overflow-hidden shadow-2xl">
-                        <img src="${petData.profileImageUrl || 'https://via.placeholder.com/400'}" class="w-full h-full object-cover">
+                    <div class="relative w-full aspect-square rounded-[3rem] overflow-hidden shadow-2xl bg-slate-100">
+                        <img id="homeSlideshow" src="${diaryImages[0]}" class="w-full h-full object-cover fade-transition">
                         <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                        <div class="absolute bottom-8 left-8 text-white">
+                        <div class="absolute bottom-8 left-8 text-white z-10">
                             <h2 class="text-3xl font-bold mb-1">${petData.name}</h2>
                             <p class="text-teal-300 font-bold">생후 ${diffDays}일째 · ${petData.focusArea}</p>
                         </div>
@@ -412,6 +464,24 @@
                         </div>
                     </div>
                 </div>`;
+                
+            // 슬라이드 쇼 적용 (5초)
+            if (diaryImages.length > 1) {
+                let slideIndex = 0;
+                window.homeSlideInterval = setInterval(() => {
+                    const imgEl = document.getElementById('homeSlideshow');
+                    if (imgEl) {
+                        slideIndex = (slideIndex + 1) % diaryImages.length;
+                        imgEl.style.opacity = '0';
+                        setTimeout(() => {
+                            imgEl.src = diaryImages[slideIndex];
+                            imgEl.style.opacity = '1';
+                        }, 500);
+                    } else {
+                        clearInterval(window.homeSlideInterval);
+                    }
+                }, 5000);
+            }
         }
 
         window.togglePublicSort = () => {
@@ -439,7 +509,6 @@
             }
         };
 
-        // 댓글 등록 기능
         window.addComment = async (diaryId) => {
             const input = document.getElementById('commentInput');
             if(!input.value.trim()) return;
@@ -458,7 +527,6 @@
             showDetail({id: diaryId}, true); 
         };
 
-        // 댓글 공감 기능
         window.toggleCommentLike = async (diaryId, commentId) => {
             const docRef = doc(db, "diaries", diaryId);
             const d = await getDoc(docRef);
@@ -503,16 +571,25 @@
                 const isLiked = item.likes && item.likes.includes(currentUser.uid);
                 const commentCount = item.comments ? item.comments.length : 0;
                 
-                const card = document.createElement('div'); card.className = "bg-white rounded-3xl overflow-hidden shadow-sm border cursor-pointer";
+                const card = document.createElement('div'); card.className = "bg-white rounded-3xl overflow-hidden shadow-sm border cursor-pointer relative";
                 card.onclick = () => showDetail(item);
                 
                 let publicHeader = '';
                 if(type === 'public') {
                     const authorId = item.userEmail ? item.userEmail.split('@')[0] : '익명';
-                    publicHeader = `<div class="flex items-center gap-2"><span class="text-[10px] font-bold text-slate-400">by ${authorId}</span><div class="flex gap-1 items-center"><span class="text-[10px] text-slate-300 mr-1"><i class="fas fa-comment"></i> ${commentCount}</span><button onclick="toggleLike('${item.id}', event)" class="text-xs font-bold ${isLiked ? 'text-red-500' : 'text-slate-300'} bg-slate-50 px-2 py-1 rounded-full"><i class="fas fa-heart"></i> ${likeCount}</button></div></div>`;
+                    const authorPic = item.authorProfileImageUrl || 'https://via.placeholder.com/150';
+                    publicHeader = `
+                        <div class="flex items-center gap-2">
+                            <img src="${authorPic}" onclick="showProfileModal('${authorPic}', event)" class="w-5 h-5 rounded-full object-cover shadow-sm z-10 cursor-pointer">
+                            <span class="text-[10px] font-bold text-slate-400 z-10 relative">by ${authorId}</span>
+                            <div class="flex gap-1 items-center z-10 relative ml-1">
+                                <span class="text-[10px] text-slate-300 mr-1"><i class="fas fa-comment"></i> ${commentCount}</span>
+                                <button onclick="toggleLike('${item.id}', event)" class="text-xs font-bold ${isLiked ? 'text-red-500' : 'text-slate-300'} bg-slate-50 px-2 py-1 rounded-full"><i class="fas fa-heart"></i> ${likeCount}</button>
+                            </div>
+                        </div>`;
                 }
 
-                card.innerHTML = `${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-48 object-cover">` : ''}<div class="p-5"><div class="flex justify-between items-center"><span class="text-[10px] bg-slate-100 px-2 py-1 rounded-full text-slate-500">${new Date(item.timestamp).toLocaleDateString()}</span>${publicHeader}</div><p class="text-slate-700 text-sm mt-3 line-clamp-3">${item.content}</p></div>`;
+                card.innerHTML = `${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-48 object-cover">` : ''}<div class="p-5"><div class="flex justify-between items-center"><span class="text-[10px] bg-slate-100 px-2 py-1 rounded-full text-slate-500 z-10 relative">${new Date(item.timestamp).toLocaleDateString()}</span>${publicHeader}</div><p class="text-slate-700 text-sm mt-3 line-clamp-3 z-10 relative">${item.content}</p></div>`;
                 grid.appendChild(card);
             });
             container.appendChild(grid);
@@ -536,9 +613,13 @@
 
             if (activeTab === 'public') {
                 const authorId = item.userEmail ? item.userEmail.split('@')[0] : '익명';
-                authorStr = `<span class="text-xs font-bold text-slate-400 ml-2 border-l border-slate-200 pl-2">by ${authorId}</span>`;
+                const authorPic = item.authorProfileImageUrl || 'https://via.placeholder.com/150';
+                authorStr = `
+                    <div class="flex items-center gap-2 ml-3 border-l border-slate-200 pl-3">
+                        <img src="${authorPic}" onclick="showProfileModal('${authorPic}', event)" class="w-5 h-5 rounded-full object-cover shadow-sm cursor-pointer">
+                        <span class="text-xs font-bold text-slate-400">by ${authorId}</span>
+                    </div>`;
                 
-                // 공개 일기 댓글 영역
                 commentsHTML = `
                     <div class="mt-6 pt-6 border-t border-slate-100">
                         <h4 class="text-sm font-bold text-slate-800 mb-4">댓글 <span class="text-teal-500">${item.comments ? item.comments.length : 0}</span></h4>
@@ -566,7 +647,7 @@
                     ${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-48 object-cover flex-shrink-0">` : ''}
                     <div class="p-8 overflow-y-auto flex-1 no-scrollbar">
                         <div class="flex justify-between items-center mb-4">
-                            <div>
+                            <div class="flex items-center">
                                 <span class="text-xs font-bold text-teal-600">${new Date(item.timestamp).toLocaleDateString()}</span>
                                 ${authorStr}
                             </div>
@@ -696,7 +777,13 @@
                 imageUrl = await getDownloadURL(snap.ref);
             }
             
-            const diaryData = { content, isPublic: document.getElementById('isPublic').checked, userId: currentUser.uid, userEmail: currentUser.email };
+            const diaryData = { 
+                content, 
+                isPublic: document.getElementById('isPublic').checked, 
+                userId: currentUser.uid, 
+                userEmail: currentUser.email,
+                authorProfileImageUrl: petData.profileImageUrl || ''
+            };
             if (imageUrl) diaryData.imageUrl = imageUrl;
             
             if (id) {
