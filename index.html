@@ -24,7 +24,6 @@
         import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
-        // ✅ 대표님의 Firebase 설정값이 이미 적용되었습니다!
         const firebaseConfig = {
             apiKey: "AIzaSyDn6hcoBuDPlv5pf-D3nF4tVa309H6ydvc",
             authDomain: "petdiary-595a2.firebaseapp.com",
@@ -44,7 +43,6 @@
         let currentUser = null;
         let petData = null;
 
-        // 상태 감지 및 화면 전환
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUser = user;
@@ -60,7 +58,6 @@
             }
         });
 
-        // 1. 로그인/회원가입 화면
         function renderLogin() {
             appDiv.innerHTML = `
                 <div class="flex flex-col items-center justify-center h-screen p-8 text-center">
@@ -69,44 +66,33 @@
                     </div>
                     <h1 class="text-2xl font-bold text-gray-800 mb-2">펫다이어리</h1>
                     <p class="text-gray-500 mb-8">우리 아이와의 소중한 기록</p>
-                    <input id="email" type="email" placeholder="이메일 (예: test@test.com)" class="w-full p-4 bg-gray-100 rounded-xl mb-3 outline-none focus:ring-2 focus:ring-teal-500">
-                    <input id="password" type="password" placeholder="비밀번호 (6자리 이상)" class="w-full p-4 bg-gray-100 rounded-xl mb-6 outline-none focus:ring-2 focus:ring-teal-500">
+                    <input id="email" type="email" placeholder="이메일" class="w-full p-4 bg-gray-100 rounded-xl mb-3 outline-none focus:ring-2 focus:ring-teal-500">
+                    <input id="password" type="password" placeholder="비밀번호" class="w-full p-4 bg-gray-100 rounded-xl mb-6 outline-none focus:ring-2 focus:ring-teal-500">
                     <button onclick="handleAuth('login')" class="w-full p-4 bg-slate-900 text-white rounded-xl font-bold mb-3 shadow-md">로그인</button>
                     <button onclick="handleAuth('signup')" class="w-full p-4 border border-gray-300 text-gray-600 rounded-xl font-bold">회원가입</button>
                 </div>
             `;
         }
 
-        // 2. 반려동물 정보 입력 (가입 후 최초 1회)
         function renderPetSetup() {
             appDiv.innerHTML = `
                 <div class="p-8 animate-fade-in">
                     <h2 class="text-2xl font-bold mb-2 text-gray-800">반가워요! 🐾</h2>
                     <p class="text-gray-500 mb-8">반려동물의 정보를 입력해 주세요.</p>
                     <div class="space-y-5">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">아이 이름</label>
-                            <input id="petName" type="text" placeholder="예: 초코, 멍멍이" class="w-full p-4 border rounded-xl outline-none focus:border-teal-500">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">나이</label>
-                            <input id="petAge" type="text" placeholder="예: 3살, 5개월" class="w-full p-4 border rounded-xl outline-none focus:border-teal-500">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">성향/수준</label>
-                            <select id="petLevel" class="w-full p-4 border rounded-xl outline-none focus:border-teal-500 bg-white">
-                                <option value="조용함">얌전하고 조용해요</option>
-                                <option value="보통">적당히 활동적이에요</option>
-                                <option value="활발함">에너지가 넘쳐요!</option>
-                            </select>
-                        </div>
-                        <button onclick="savePetInfo()" class="w-full p-4 bg-teal-500 text-white rounded-xl font-bold mt-4 shadow-lg hover:bg-teal-600 transition">시작하기</button>
+                        <input id="petName" type="text" placeholder="아이 이름" class="w-full p-4 border rounded-xl outline-none focus:border-teal-500">
+                        <input id="petAge" type="text" placeholder="나이 (예: 3살, 5개월)" class="w-full p-4 border rounded-xl outline-none focus:border-teal-500">
+                        <select id="petLevel" class="w-full p-4 border rounded-xl outline-none focus:border-teal-500 bg-white">
+                            <option value="조용함">얌전하고 조용해요</option>
+                            <option value="보통">적당히 활동적이에요</option>
+                            <option value="활발함">에너지가 넘쳐요!</option>
+                        </select>
+                        <button onclick="savePetInfo()" class="w-full p-4 bg-teal-500 text-white rounded-xl font-bold mt-4 shadow-lg">시작하기</button>
                     </div>
                 </div>
             `;
         }
 
-        // 3. 메인 다이어리 목록 (3줄 요약 적용)
         async function renderMain() {
             appDiv.innerHTML = `
                 <div class="p-6 pb-24 animate-fade-in">
@@ -115,48 +101,55 @@
                             <h2 class="text-2xl font-bold text-gray-800">${petData.name}의 다이어리</h2>
                             <p class="text-teal-600 font-medium text-sm">${petData.age} • ${petData.level}</p>
                         </div>
-                        <button onclick="handleLogout()" class="text-gray-400 text-xs hover:text-red-400">로그아웃</button>
+                        <button onclick="handleLogout()" class="text-gray-400 text-xs">로그아웃</button>
                     </header>
                     <div id="diaryList" class="space-y-6">
                         <p class="text-center text-gray-300 py-20">기록을 불러오고 있어요...</p>
                     </div>
                 </div>
-                <button onclick="renderWrite()" class="fixed bottom-8 right-8 w-16 h-16 bg-teal-500 text-white rounded-full shadow-2xl flex items-center justify-center text-2xl z-10 hover:scale-110 transition active:scale-95">
+                <button onclick="renderWrite()" class="fixed bottom-8 right-8 w-16 h-16 bg-teal-500 text-white rounded-full shadow-2xl flex items-center justify-center text-2xl z-10">
                     <i class="fas fa-plus"></i>
                 </button>
             `;
             loadDiaries();
         }
 
-        // 일기 불러오기 및 요약 표시
         async function loadDiaries() {
-            const q = query(collection(db, "diaries"), where("userId", "==", currentUser.uid), orderBy("timestamp", "desc"));
-            const querySnapshot = await getDocs(q);
-            const listDiv = document.getElementById('diaryList');
-            
-            if (querySnapshot.empty) {
-                listDiv.innerHTML = `<div class="text-center py-20 text-gray-400">아이와의 첫 추억을 남겨보세요!</div>`;
-                return;
-            }
+            try {
+                // index 문제 해결을 위해 일단 가져오고 클라이언트에서 정렬
+                const q = query(collection(db, "diaries"), where("userId", "==", currentUser.uid));
+                const querySnapshot = await getDocs(q);
+                const listDiv = document.getElementById('diaryList');
+                
+                if (querySnapshot.empty) {
+                    listDiv.innerHTML = `<div class="text-center py-20 text-gray-400">첫 일기를 남겨보세요!</div>`;
+                    return;
+                }
 
-            listDiv.innerHTML = "";
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const card = document.createElement('div');
-                card.className = "bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer active:bg-gray-50 transition";
-                card.onclick = () => showDetail(data); // 클릭 시 팝업창
-                card.innerHTML = `
-                    ${data.imageUrl ? `<img src="${data.imageUrl}" class="w-full h-48 object-cover">` : ''}
-                    <div class="p-4">
-                        <p class="text-gray-700 text-sm leading-relaxed line-clamp-3">${data.content}</p>
-                        <p class="text-[10px] text-gray-400 mt-3">${new Date(data.timestamp).toLocaleDateString()}</p>
-                    </div>
-                `;
-                listDiv.appendChild(card);
-            });
+                let diaries = [];
+                querySnapshot.forEach(doc => diaries.push(doc.data()));
+                diaries.sort((a, b) => b.timestamp - a.timestamp);
+
+                listDiv.innerHTML = "";
+                diaries.forEach((data) => {
+                    const card = document.createElement('div');
+                    card.className = "bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer active:bg-gray-50 mb-6";
+                    card.onclick = () => showDetail(data);
+                    card.innerHTML = `
+                        ${data.imageUrl ? `<img src="${data.imageUrl}" class="w-full h-48 object-cover">` : ''}
+                        <div class="p-4">
+                            <p class="text-gray-700 text-sm leading-relaxed line-clamp-3">${data.content}</p>
+                            <p class="text-[10px] text-gray-400 mt-3">${new Date(data.timestamp).toLocaleDateString()}</p>
+                        </div>
+                    `;
+                    listDiv.appendChild(card);
+                });
+            } catch (error) {
+                console.error(error);
+                document.getElementById('diaryList').innerHTML = `<p class="text-center py-20">데이터 로드 실패</p>`;
+            }
         }
 
-        // 4. 상세 내용 팝업창 (모달)
         window.showDetail = function(data) {
             const modal = document.createElement('div');
             modal.className = "fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 animate-fade-in";
@@ -176,7 +169,6 @@
             document.body.appendChild(modal);
         }
 
-        // 5. 일기 쓰기 화면
         window.renderWrite = function() {
             appDiv.innerHTML = `
                 <div class="p-6 animate-fade-in">
@@ -197,14 +189,13 @@
             `;
         }
 
-        // --- 기능 로직 ---
         window.handleAuth = async (type) => {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             try {
                 if (type === 'signup') await createUserWithEmailAndPassword(auth, email, password);
                 else await signInWithEmailAndPassword(auth, email, password);
-            } catch (e) { alert("로그인 실패: 이메일 형식과 비밀번호(6자 이상)를 확인해 주세요."); }
+            } catch (e) { alert("오류가 발생했습니다. 이메일과 비밀번호를 확인해 주세요."); }
         };
 
         window.savePetInfo = async () => {
