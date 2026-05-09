@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>펫다이어리 프로토타입</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap');
+        body { font-family: 'Noto Sans KR', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .slide-in { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <div id="app" class="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative overflow-x-hidden">
+        <!-- 화면이 여기에 렌더링됩니다 -->
+    </div>
+
+    <script>
+        // 애플리케이션 상태 관리
+        let state = {
+            step: 'landing',
+            petData: { name: '', age: '', mode: '' },
+            diaries: []
+        };
+
+        const app = document.getElementById('app');
+
+        // 화면 렌더링 함수
+        function render() {
+            if (state.step === 'landing') {
+                app.innerHTML = `
+                    <div class="flex flex-col items-center justify-center min-h-screen p-10 text-center slide-in">
+                        <div class="w-20 h-20 bg-teal-500 rounded-[2rem] flex items-center justify-center text-white mb-8 shadow-xl shadow-teal-100">
+                            <i class="fas fa-paw text-4xl"></i>
+                        </div>
+                        <h1 class="text-3xl font-black text-slate-900 mb-4 tracking-tighter">펫다이어리</h1>
+                        <p class="text-slate-500 leading-relaxed mb-12 font-medium">우리 아이와의 100일,<br>기록이 책이 되는 특별한 경험</p>
+                        <button onclick="goStep('onboarding-data')" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold text-lg shadow-xl active:scale-95 transition-all">무료로 시작하기</button>
+                        <p class="mt-10 text-[10px] text-gray-300 font-bold uppercase tracking-widest text-center w-full">Team Collaboration Mode</p>
+                    </div>
+                `;
+            } else if (state.step === 'onboarding-data') {
+                app.innerHTML = `
+                    <div class="p-8 pt-20 bg-white min-h-screen flex flex-col slide-in">
+                        <h2 class="text-2xl font-black text-slate-900 mb-8 leading-tight">우리 아이의<br><span class="text-teal-500">이름과 나이</span>를 알려주세요</h2>
+                        <div class="space-y-6 flex-grow">
+                            <input type="text" id="petName" placeholder="아이 이름" class="w-full bg-slate-50 p-5 rounded-2xl border-none focus:ring-2 focus:ring-teal-500 outline-none" value="${state.petData.name}">
+                            <input type="number" id="petAge" placeholder="나이 (숫자만)" class="w-full bg-slate-50 p-5 rounded-2xl border-none focus:ring-2 focus:ring-teal-500 outline-none" value="${state.petData.age}">
+                            <button onclick="saveData()" class="w-full bg-teal-500 text-white py-5 rounded-2xl font-bold text-lg mt-10">다음으로</button>
+                        </div>
+                    </div>
+                `;
+            } else if (state.step === 'main-dashboard') {
+                app.innerHTML = `
+                    <div class="min-h-screen pb-24 slide-in">
+                        <header class="bg-white px-6 py-5 flex justify-between items-center sticky top-0 z-20 border-b border-slate-100">
+                            <h1 class="text-lg font-black text-slate-900">${state.petData.name}의 기록</h1>
+                            <div class="flex gap-4 text-slate-400">
+                                <i class="fas fa-share-alt cursor-pointer"></i>
+                                <i class="fas fa-cog cursor-pointer"></i>
+                            </div>
+                        </header>
+                        <div class="p-6">
+                            <div class="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
+                                <div class="relative z-10">
+                                    <p class="text-teal-400 font-bold text-[10px] uppercase tracking-widest mb-1">100일 챌린지</p>
+                                    <p class="text-2xl font-black mb-4">Day ${state.diaries.length}/100</p>
+                                    <div class="w-full bg-white/10 h-2 rounded-full overflow-hidden mb-4">
+                                        <div class="bg-teal-400 h-full transition-all duration-1000" style="width: ${Math.max(5, (state.diaries.length / 100) * 100)}%"></div>
+                                    </div>
+                                    <p class="text-white/40 text-[10px]">100일 기록 완료 시 실물 다이어리 무료 출판!</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="px-6 space-y-4" id="diaryList">
+                            <h3 class="font-black text-slate-900">최근 일기</h3>
+                            ${state.diaries.length === 0 ? `
+                                <div class="py-20 flex flex-col items-center justify-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-100 text-center">
+                                    <i class="far fa-image text-4xl text-slate-200 mb-4"></i>
+                                    <p class="text-slate-400 text-xs font-bold">첫 일기를 작성해보세요!</p>
+                                </div>
+                            ` : state.diaries.map(d => `
+                                <div class="bg-white p-5 rounded-3xl border border-slate-50 shadow-sm flex gap-4">
+                                    <div class="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-300">
+                                        <i class="fas fa-camera text-2xl"></i>
+                                    </div>
+                                    <div class="flex flex-col justify-center">
+                                        <p class="text-[10px] font-black text-teal-500 mb-1">${d.date}</p>
+                                        <p class="text-sm text-slate-700 font-medium line-clamp-3">${d.content}</p>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-6">
+                            <button onclick="openModal()" class="bg-slate-900 text-white w-full py-5 rounded-2xl font-black text-lg shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all">
+                                <i class="fas fa-plus-circle"></i> 오늘 일기 쓰기
+                            </button>
+                        </div>
+                        <div id="modal" class="fixed inset-0 bg-slate-900/60 z-50 hidden items-end justify-center p-4 backdrop-blur-sm">
+                            <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl">
+                                <div class="flex justify-between items-center mb-8">
+                                    <h2 class="text-xl font-black text-slate-900">새로운 기록</h2>
+                                    <button onclick="closeModal()" class="text-slate-400 font-bold">닫기</button>
+                                </div>
+                                <textarea id="diaryContent" class="w-full bg-slate-50 rounded-3xl p-6 h-40 focus:ring-2 focus:ring-teal-500 outline-none mb-6 text-slate-700 font-medium border-none" placeholder="오늘 어떤 일이 있었나요?"></textarea>
+                                <button onclick="addDiary()" class="w-full bg-teal-500 text-white py-5 rounded-2xl font-black text-lg shadow-xl">기록 저장</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // 제어 함수들
+        function goStep(step) {
+            state.step = step;
+            render();
+        }
+
+        function saveData() {
+            state.petData.name = document.getElementById('petName').value;
+            state.petData.age = document.getElementById('petAge').value;
+            if (state.petData.name && state.petData.age) {
+                goStep('main-dashboard');
+            }
+        }
+
+        function openModal() { document.getElementById('modal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('modal').style.display = 'none'; }
+
+        function addDiary() {
+            const content = document.getElementById('diaryContent').value;
+            if (!content) return;
+            state.diaries.push({
+                id: Date.now(),
+                date: new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' }),
+                content: content
+            });
+            closeModal();
+            render();
+        }
+
+        // 초기 렌더링
+        render();
+    </script>
+</body>
+</html>
