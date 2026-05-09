@@ -3,27 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>펫다이어리 프로토타입</title>
+    <title>펫다이어리 PRO</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
-        body { font-family: 'Noto Sans KR', sans-serif; }
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f8fafc; }
         .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .tab-active { color: #14b8a6; border-bottom: 3px solid #14b8a6; font-weight: bold; }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-    <div id="app" class="max-w-md mx-auto bg-white min-h-screen shadow-lg relative">
+<body>
+    <div id="app" class="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative flex flex-col">
         </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, collection, addDoc, query, where, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
+        // ✅ 대표님의 설정값 유지
         const firebaseConfig = {
             apiKey: "AIzaSyDn6hcoBuDPlv5pf-D3nF4tVa309H6ydvc",
             authDomain: "petdiary-595a2.firebaseapp.com",
@@ -42,203 +44,359 @@
         const appDiv = document.getElementById('app');
         let currentUser = null;
         let petData = null;
+        let activeTab = 'home'; // home, diary, public, talk, store
 
+        // 초기화 및 상태 감지
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 currentUser = user;
-                const petDoc = await getDoc(doc(db, "pets", user.uid));
-                if (petDoc.exists()) {
-                    petData = petDoc.data();
-                    renderMain();
-                } else {
-                    renderPetSetup();
-                }
+                await refreshPetData();
+                renderLayout();
             } else {
                 renderLogin();
             }
         });
 
-        function renderLogin() {
-            appDiv.innerHTML = `
-                <div class="flex flex-col items-center justify-center h-screen p-8 text-center">
-                    <div class="w-20 h-20 bg-teal-500 rounded-3xl flex items-center justify-center mb-6 shadow-lg">
-                        <i class="fas fa-paw text-white text-4xl"></i>
-                    </div>
-                    <h1 class="text-2xl font-bold text-gray-800 mb-2">펫다이어리</h1>
-                    <p class="text-gray-500 mb-8">우리 아이와의 소중한 기록</p>
-                    <input id="email" type="email" placeholder="이메일" class="w-full p-4 bg-gray-100 rounded-xl mb-3 outline-none focus:ring-2 focus:ring-teal-500">
-                    <input id="password" type="password" placeholder="비밀번호" class="w-full p-4 bg-gray-100 rounded-xl mb-6 outline-none focus:ring-2 focus:ring-teal-500">
-                    <button onclick="handleAuth('login')" class="w-full p-4 bg-slate-900 text-white rounded-xl font-bold mb-3 shadow-md">로그인</button>
-                    <button onclick="handleAuth('signup')" class="w-full p-4 border border-gray-300 text-gray-600 rounded-xl font-bold">회원가입</button>
-                </div>
-            `;
-        }
-
-        function renderPetSetup() {
-            appDiv.innerHTML = `
-                <div class="p-8 animate-fade-in">
-                    <h2 class="text-2xl font-bold mb-2 text-gray-800">반가워요! 🐾</h2>
-                    <p class="text-gray-500 mb-8">반려동물의 정보를 입력해 주세요.</p>
-                    <div class="space-y-5">
-                        <input id="petName" type="text" placeholder="아이 이름" class="w-full p-4 border rounded-xl outline-none focus:border-teal-500">
-                        <input id="petAge" type="text" placeholder="나이 (예: 3살, 5개월)" class="w-full p-4 border rounded-xl outline-none focus:border-teal-500">
-                        <select id="petLevel" class="w-full p-4 border rounded-xl outline-none focus:border-teal-500 bg-white">
-                            <option value="조용함">얌전하고 조용해요</option>
-                            <option value="보통">적당히 활동적이에요</option>
-                            <option value="활발함">에너지가 넘쳐요!</option>
-                        </select>
-                        <button onclick="savePetInfo()" class="w-full p-4 bg-teal-500 text-white rounded-xl font-bold mt-4 shadow-lg">시작하기</button>
-                    </div>
-                </div>
-            `;
-        }
-
-        async function renderMain() {
-            appDiv.innerHTML = `
-                <div class="p-6 pb-24 animate-fade-in">
-                    <header class="flex justify-between items-end mb-8">
-                        <div>
-                            <h2 class="text-2xl font-bold text-gray-800">${petData.name}의 다이어리</h2>
-                            <p class="text-teal-600 font-medium text-sm">${petData.age} • ${petData.level}</p>
-                        </div>
-                        <button onclick="handleLogout()" class="text-gray-400 text-xs">로그아웃</button>
-                    </header>
-                    <div id="diaryList" class="space-y-6">
-                        <p class="text-center text-gray-300 py-20">기록을 불러오고 있어요...</p>
-                    </div>
-                </div>
-                <button onclick="renderWrite()" class="fixed bottom-8 right-8 w-16 h-16 bg-teal-500 text-white rounded-full shadow-2xl flex items-center justify-center text-2xl z-10">
-                    <i class="fas fa-plus"></i>
-                </button>
-            `;
-            loadDiaries();
-        }
-
-        async function loadDiaries() {
-            try {
-                // index 문제 해결을 위해 일단 가져오고 클라이언트에서 정렬
-                const q = query(collection(db, "diaries"), where("userId", "==", currentUser.uid));
-                const querySnapshot = await getDocs(q);
-                const listDiv = document.getElementById('diaryList');
-                
-                if (querySnapshot.empty) {
-                    listDiv.innerHTML = `<div class="text-center py-20 text-gray-400">첫 일기를 남겨보세요!</div>`;
-                    return;
-                }
-
-                let diaries = [];
-                querySnapshot.forEach(doc => diaries.push(doc.data()));
-                diaries.sort((a, b) => b.timestamp - a.timestamp);
-
-                listDiv.innerHTML = "";
-                diaries.forEach((data) => {
-                    const card = document.createElement('div');
-                    card.className = "bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 cursor-pointer active:bg-gray-50 mb-6";
-                    card.onclick = () => showDetail(data);
-                    card.innerHTML = `
-                        ${data.imageUrl ? `<img src="${data.imageUrl}" class="w-full h-48 object-cover">` : ''}
-                        <div class="p-4">
-                            <p class="text-gray-700 text-sm leading-relaxed line-clamp-3">${data.content}</p>
-                            <p class="text-[10px] text-gray-400 mt-3">${new Date(data.timestamp).toLocaleDateString()}</p>
-                        </div>
-                    `;
-                    listDiv.appendChild(card);
-                });
-            } catch (error) {
-                console.error(error);
-                document.getElementById('diaryList').innerHTML = `<p class="text-center py-20">데이터 로드 실패</p>`;
+        async function refreshPetData() {
+            const petDoc = await getDoc(doc(db, "pets", currentUser.uid));
+            if (petDoc.exists()) {
+                petData = petDoc.data();
+            } else {
+                renderPetSetup();
             }
         }
 
-        window.showDetail = function(data) {
-            const modal = document.createElement('div');
-            modal.className = "fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 animate-fade-in";
-            modal.onclick = (e) => { if(e.target === modal) modal.remove(); };
-            modal.innerHTML = `
-                <div class="bg-white w-full max-w-sm rounded-3xl overflow-hidden max-h-[85vh] flex flex-col shadow-2xl">
-                    ${data.imageUrl ? `<img src="${data.imageUrl}" class="w-full h-72 object-cover">` : ''}
-                    <div class="p-6 overflow-y-auto">
-                        <div class="flex justify-between items-center mb-4">
-                            <span class="text-xs font-bold text-teal-500">${new Date(data.timestamp).toLocaleDateString()}</span>
-                            <button onclick="this.closest('.fixed').remove()" class="text-gray-400"><i class="fas fa-times"></i></button>
+        // 로그인 화면
+        function renderLogin() {
+            appDiv.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-screen p-8 text-center animate-fade-in">
+                    <div class="w-20 h-20 bg-teal-500 rounded-[2rem] flex items-center justify-center mb-6 shadow-xl">
+                        <i class="fas fa-paw text-white text-4xl"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold text-slate-800 mb-2">펫다이어리</h1>
+                    <p class="text-slate-400 mb-10 text-sm">반려동물과 함께하는 특별한 여정</p>
+                    <div class="w-full space-y-3">
+                        <input id="email" type="email" placeholder="이메일 주소" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-teal-500 transition">
+                        <input id="password" type="password" placeholder="비밀번호" class="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-teal-500 transition">
+                        <button onclick="handleAuth('login')" class="w-full p-4 bg-slate-900 text-white rounded-2xl font-bold shadow-lg">로그인</button>
+                        <button onclick="handleAuth('signup')" class="w-full p-4 text-slate-500 font-medium">처음이신가요? 회원가입</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 레이아웃 (상단 탭 포함)
+        function renderLayout() {
+            if (!petData) return;
+            appDiv.innerHTML = `
+                <nav class="sticky top-0 bg-white/80 backdrop-blur-md z-30 border-b border-slate-100">
+                    <div class="flex justify-between items-center px-6 pt-6 pb-2">
+                        <h1 class="text-xl font-bold text-slate-800">PET DIARY</h1>
+                        <div class="flex gap-4">
+                            <button onclick="renderEditPet()" class="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1.5 rounded-full">정보수정</button>
+                            <button onclick="handleLogout()" class="text-xs font-bold text-slate-400">로그아웃</button>
                         </div>
-                        <p class="text-gray-800 whitespace-pre-wrap leading-relaxed">${data.content}</p>
+                    </div>
+                    <div class="flex overflow-x-auto no-scrollbar px-2">
+                        <button onclick="changeTab('home')" class="flex-none px-4 py-3 text-sm ${activeTab === 'home' ? 'tab-active' : 'text-slate-400'}">메인</button>
+                        <button onclick="changeTab('diary')" class="flex-none px-4 py-3 text-sm ${activeTab === 'diary' ? 'tab-active' : 'text-slate-400'}">내 일기</button>
+                        <button onclick="changeTab('public')" class="flex-none px-4 py-3 text-sm ${activeTab === 'public' ? 'tab-active' : 'text-slate-400'}">공개일기</button>
+                        <button onclick="changeTab('talk')" class="flex-none px-4 py-3 text-sm ${activeTab === 'talk' ? 'tab-active' : 'text-slate-400'}">잡담</button>
+                        <button onclick="changeTab('store')" class="flex-none px-4 py-3 text-sm ${activeTab === 'store' ? 'tab-active' : 'text-slate-400'}">스토어</button>
+                    </div>
+                </nav>
+                <div id="content-area" class="flex-1 overflow-y-auto"></div>
+                <button onclick="renderWrite()" class="fixed bottom-8 right-8 w-14 h-14 bg-teal-500 text-white rounded-full shadow-2xl flex items-center justify-center text-xl z-40 transition hover:scale-110 active:scale-95">
+                    <i class="fas fa-edit"></i>
+                </button>
+            `;
+            updateContent();
+        }
+
+        async function updateContent() {
+            const area = document.getElementById('content-area');
+            if (activeTab === 'home') renderHome(area);
+            else if (activeTab === 'diary') renderDiaryList(area, 'private');
+            else if (activeTab === 'public') renderDiaryList(area, 'public');
+            else if (activeTab === 'talk') area.innerHTML = '<div class="py-20 text-center text-slate-400">커뮤니티 준비 중입니다!</div>';
+            else if (activeTab === 'store') area.innerHTML = '<div class="py-20 text-center text-slate-400">스토어 준비 중입니다!</div>';
+        }
+
+        // 1. 메인 화면 (대시보드)
+        async function renderHome(container) {
+            const diaries = await getDocs(query(collection(db, "diaries"), where("userId", "==", currentUser.uid)));
+            const diaryCount = diaries.size;
+            
+            // 날짜 계산
+            const birthDate = new Date(petData.birthDate);
+            const today = new Date();
+            const diffDays = Math.floor((today - birthDate) / (1000 * 60 * 60 * 24)) + 1;
+            
+            // 100일 완성일 계산
+            const daysLeft = 100 - diaryCount;
+            const targetDate = new Date();
+            targetDate.setDate(today.getDate() + daysLeft);
+            const targetStr = targetDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+
+            container.innerHTML = `
+                <div class="p-6 animate-fade-in space-y-6">
+                    <div class="relative w-full aspect-square rounded-[3rem] overflow-hidden shadow-2xl">
+                        <img src="${petData.profileImageUrl || 'https://via.placeholder.com/400'}" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                        <div class="absolute bottom-8 left-8 text-white">
+                            <h2 class="text-3xl font-bold mb-1">${petData.name}</h2>
+                            <p class="text-teal-300 font-bold">생후 ${diffDays}일째</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-teal-50 p-6 rounded-[2rem] border border-teal-100">
+                            <p class="text-xs text-teal-600 font-bold mb-1">작성한 일기</p>
+                            <p class="text-2xl font-black text-teal-800">${diaryCount}<span class="text-sm font-normal ml-1">일차</span></p>
+                        </div>
+                        <div class="bg-orange-50 p-6 rounded-[2rem] border border-orange-100">
+                            <p class="text-xs text-orange-600 font-bold mb-1">100일 완성 예정</p>
+                            <p class="text-lg font-black text-orange-800">${targetStr}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 2 & 3. 일기 목록 (내 일기 & 공개 일기 통합)
+        async function renderDiaryList(container, type) {
+            container.innerHTML = '<p class="py-20 text-center text-slate-300">기록을 찾는 중...</p>';
+            let q;
+            if (type === 'private') {
+                q = query(collection(db, "diaries"), where("userId", "==", currentUser.uid));
+            } else {
+                q = query(collection(db, "diaries"), where("isPublic", "==", true));
+            }
+            
+            const snap = await getDocs(q);
+            container.innerHTML = '';
+            
+            if (snap.empty) {
+                container.innerHTML = '<div class="py-20 text-center text-slate-400">아직 일기가 없습니다.</div>';
+                return;
+            }
+
+            let list = [];
+            snap.forEach(d => list.push({id: d.id, ...d.data()}));
+            list.sort((a,b) => b.timestamp - a.timestamp);
+
+            const grid = document.createElement('div');
+            grid.className = "p-6 grid grid-cols-1 gap-6 animate-fade-in";
+            
+            list.forEach(item => {
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 cursor-pointer active:scale-95 transition";
+                card.onclick = () => showDetail(item);
+                card.innerHTML = `
+                    ${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-56 object-cover">` : ''}
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-bold px-2 py-1 bg-slate-100 rounded-full text-slate-500">${new Date(item.timestamp).toLocaleDateString()}</span>
+                            ${item.isPublic ? '<span class="text-[10px] text-teal-500 font-bold">공개됨</span>' : ''}
+                        </div>
+                        <p class="text-slate-700 text-sm leading-relaxed line-clamp-3">${item.content}</p>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+            container.appendChild(grid);
+        }
+
+        // 일기 상세 보기 (수정/삭제 포함)
+        window.showDetail = function(item) {
+            const modal = document.createElement('div');
+            modal.className = "fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 animate-fade-in";
+            modal.innerHTML = `
+                <div class="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden max-h-[85vh] flex flex-col shadow-2xl">
+                    ${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-80 object-cover">` : ''}
+                    <div class="p-8 overflow-y-auto">
+                        <div class="flex justify-between items-center mb-6">
+                            <span class="text-xs font-bold text-teal-600">${new Date(item.timestamp).toLocaleDateString()}</span>
+                            <div class="flex gap-3">
+                                ${item.userId === currentUser.uid ? `
+                                    <button onclick='renderWrite(${JSON.stringify(item).replace(/'/g, "&apos;")})' class="text-xs font-bold text-slate-400">수정</button>
+                                    <button onclick="deleteDiary('${item.id}')" class="text-xs font-bold text-red-400">삭제</button>
+                                ` : ''}
+                                <button onclick="this.closest('.fixed').remove()" class="text-slate-300"><i class="fas fa-times"></i></button>
+                            </div>
+                        </div>
+                        <p class="text-slate-800 whitespace-pre-wrap leading-relaxed text-sm">${item.content}</p>
                     </div>
                 </div>
             `;
             document.body.appendChild(modal);
         }
 
-        window.renderWrite = function() {
+        // 일기 작성 및 수정 화면
+        window.renderWrite = function(editData = null) {
+            // 상세보기가 열려있다면 닫기
+            const openModal = document.querySelector('.fixed.bg-black\\/80');
+            if(openModal) openModal.remove();
+
             appDiv.innerHTML = `
-                <div class="p-6 animate-fade-in">
-                    <div class="flex justify-between items-center mb-6">
-                        <button onclick="renderMain()" class="text-gray-400"><i class="fas fa-times"></i></button>
-                        <h2 class="font-bold text-gray-800">새 기록 남기기</h2>
-                        <button onclick="saveDiary()" class="text-teal-600 font-bold">저장</button>
+                <div class="p-8 animate-fade-in flex-1">
+                    <div class="flex justify-between items-center mb-10">
+                        <button onclick="renderLayout()" class="text-slate-400"><i class="fas fa-arrow-left"></i></button>
+                        <h2 class="font-bold text-lg">${editData ? '일기 수정' : '오늘의 기록'}</h2>
+                        <button onclick="saveDiary('${editData ? editData.id : ''}')" class="text-teal-600 font-bold">저장</button>
                     </div>
-                    <div class="space-y-4">
-                        <div id="imagePreview" onclick="document.getElementById('fileInput').click()" class="w-full h-64 bg-gray-50 rounded-2xl flex flex-col items-center justify-center border-2 border-dashed border-gray-200 cursor-pointer overflow-hidden">
-                            <i class="fas fa-camera text-3xl text-gray-300 mb-2"></i>
-                            <span class="text-gray-400 text-sm">사진 추가</span>
+                    <div class="space-y-6">
+                        <div id="imagePreview" onclick="document.getElementById('fileInput').click()" class="w-full h-64 bg-slate-50 rounded-[2rem] flex flex-col items-center justify-center border-2 border-dashed border-slate-200 cursor-pointer overflow-hidden transition hover:bg-slate-100">
+                            ${editData && editData.imageUrl ? `<img src="${editData.imageUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-camera text-3xl text-slate-200 mb-2"></i><span class="text-slate-400 text-xs">사진 추가</span>'}
                         </div>
                         <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="previewImage(event)">
-                        <textarea id="diaryContent" rows="10" placeholder="${petData.name}와 어떤 하루를 보냈나요?" class="w-full p-4 bg-gray-50 rounded-2xl outline-none border-none resize-none text-gray-700"></textarea>
+                        <textarea id="diaryContent" rows="8" placeholder="${petData.name}와 어떤 하루를 보내셨나요?" class="w-full p-6 bg-slate-50 rounded-[2rem] outline-none border-none resize-none text-slate-700 text-sm leading-relaxed">${editData ? editData.content : ''}</textarea>
+                        <div class="flex items-center gap-3 px-2">
+                            <input type="checkbox" id="isPublic" class="w-5 h-5 rounded accent-teal-500" ${editData && editData.isPublic ? 'checked' : ''}>
+                            <label for="isPublic" class="text-sm font-bold text-slate-600">이 일기를 모두에게 공개할래요</label>
+                        </div>
                     </div>
                 </div>
             `;
         }
 
+        // 정보 수정 화면 (마이페이지)
+        window.renderEditPet = function() {
+            appDiv.innerHTML = `
+                <div class="p-8 animate-fade-in flex-1">
+                    <div class="flex justify-between items-center mb-10">
+                        <button onclick="renderLayout()" class="text-slate-400"><i class="fas fa-arrow-left"></i></button>
+                        <h2 class="font-bold text-lg">우리 아이 정보 수정</h2>
+                        <button onclick="savePetInfoUpdate()" class="text-teal-600 font-bold">완료</button>
+                    </div>
+                    <div class="space-y-6">
+                        <div id="profilePreview" onclick="document.getElementById('profileInput').click()" class="w-40 h-40 mx-auto bg-slate-50 rounded-full flex flex-col items-center justify-center border-2 border-dashed border-slate-200 cursor-pointer overflow-hidden relative group">
+                            <img src="${petData.profileImageUrl || 'https://via.placeholder.com/150'}" class="w-full h-full object-cover">
+                            <div class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                                <i class="fas fa-camera text-white"></i>
+                            </div>
+                        </div>
+                        <input type="file" id="profileInput" class="hidden" accept="image/*" onchange="previewProfileImage(event)">
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="text-xs font-bold text-slate-400 ml-2">아이 이름</label>
+                                <input id="editPetName" type="text" value="${petData.name}" class="w-full p-4 bg-slate-50 rounded-xl outline-none mt-1">
+                            </div>
+                            <div>
+                                <label class="text-xs font-bold text-slate-400 ml-2">태어난 날 (생일)</label>
+                                <input id="editPetBirth" type="date" value="${petData.birthDate}" class="w-full p-4 bg-slate-50 rounded-xl outline-none mt-1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 초기 반려동물 설정 (가입 직후)
+        function renderPetSetup() {
+            appDiv.innerHTML = `
+                <div class="p-8 animate-fade-in h-screen flex flex-col justify-center">
+                    <h2 class="text-3xl font-black mb-2 text-slate-800">반가워요!🐾</h2>
+                    <p class="text-slate-400 mb-10 text-sm leading-relaxed">아이의 정보를 입력하면<br>특별한 기념일을 계산해 드릴게요.</p>
+                    <div class="space-y-4">
+                        <input id="setupName" type="text" placeholder="아이 이름" class="w-full p-4 bg-slate-50 rounded-2xl outline-none border border-slate-100">
+                        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <label class="text-xs font-bold text-slate-400 block mb-1">태어난 날을 골라주세요</label>
+                            <input id="setupBirth" type="date" class="w-full bg-transparent outline-none">
+                        </div>
+                        <button onclick="initialPetSetup()" class="w-full p-5 bg-teal-500 text-white rounded-3xl font-bold shadow-xl shadow-teal-100">시작하기</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- 데이터 처리 함수들 ---
+
         window.handleAuth = async (type) => {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            if(!email || !password) return alert("이메일과 비밀번호를 입력해 주세요.");
             try {
                 if (type === 'signup') await createUserWithEmailAndPassword(auth, email, password);
                 else await signInWithEmailAndPassword(auth, email, password);
-            } catch (e) { alert("오류가 발생했습니다. 이메일과 비밀번호를 확인해 주세요."); }
+            } catch (e) { alert("로그인 정보를 확인해 주세요!"); }
         };
 
-        window.savePetInfo = async () => {
-            const name = document.getElementById('petName').value;
-            const age = document.getElementById('petAge').value;
-            const level = document.getElementById('petLevel').value;
-            if (!name || !age) return alert("정보를 모두 입력해 주세요!");
-            await setDoc(doc(db, "pets", currentUser.uid), { name, age, level });
-            petData = { name, age, level };
-            renderMain();
+        window.initialPetSetup = async () => {
+            const name = document.getElementById('setupName').value;
+            const birthDate = document.getElementById('setupBirth').value;
+            if(!name || !birthDate) return alert("모든 정보를 입력해 주세요!");
+            await setDoc(doc(db, "pets", currentUser.uid), { name, birthDate, profileImageUrl: '' });
+            await refreshPetData();
+            renderLayout();
         };
 
+        window.savePetInfoUpdate = async () => {
+            const name = document.getElementById('editPetName').value;
+            const birthDate = document.getElementById('editPetBirth').value;
+            const file = document.getElementById('profileInput').files[0];
+            
+            let profileImageUrl = petData.profileImageUrl;
+            if (file) {
+                const storageRef = ref(storage, `profiles/${currentUser.uid}`);
+                const snap = await uploadBytes(storageRef, file);
+                profileImageUrl = await getDownloadURL(snap.ref);
+            }
+
+            await updateDoc(doc(db, "pets", currentUser.uid), { name, birthDate, profileImageUrl });
+            await refreshPetData();
+            renderLayout();
+        };
+
+        window.saveDiary = async (id = '') => {
+            const content = document.getElementById('diaryContent').value;
+            const isPublic = document.getElementById('isPublic').checked;
+            const file = document.getElementById('fileInput').files[0];
+            if (!content) return alert("내용을 입력해 주세요.");
+
+            let imageUrl = '';
+            if (file) {
+                const storageRef = ref(storage, `diaries/${currentUser.uid}/${Date.now()}`);
+                const snap = await uploadBytes(storageRef, file);
+                imageUrl = await getDownloadURL(snap.ref);
+            }
+
+            const diaryData = {
+                content, isPublic, timestamp: Date.now(), userId: currentUser.uid
+            };
+            if(imageUrl) diaryData.imageUrl = imageUrl;
+
+            if(id) await updateDoc(doc(db, "diaries", id), diaryData);
+            else await addDoc(collection(db, "diaries"), diaryData);
+            
+            renderLayout();
+        };
+
+        window.deleteDiary = async (id) => {
+            if(!confirm("정말 이 일기를 지울까요?")) return;
+            await deleteDoc(doc(db, "diaries", id));
+            document.querySelector('.fixed.bg-black\\/80').remove();
+            renderLayout();
+        };
+
+        window.changeTab = (tab) => { activeTab = tab; renderLayout(); };
+        window.handleLogout = () => signOut(auth);
         window.previewImage = (e) => {
             const reader = new FileReader();
             reader.onload = () => {
-                const preview = document.getElementById('imagePreview');
-                preview.innerHTML = `<img src="${reader.result}" class="w-full h-full object-cover">`;
+                document.getElementById('imagePreview').innerHTML = `<img src="${reader.result}" class="w-full h-full object-cover">`;
+            };
+            reader.readAsDataURL(e.target.files[0]);
+        };
+        window.previewProfileImage = (e) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                document.getElementById('profilePreview').querySelector('img').src = reader.result;
             };
             reader.readAsDataURL(e.target.files[0]);
         };
 
-        window.saveDiary = async () => {
-            const content = document.getElementById('diaryContent').value;
-            const file = document.getElementById('fileInput').files[0];
-            if (!content) return alert("내용을 적어주세요!");
-
-            let imageUrl = "";
-            if (file) {
-                const storageRef = ref(storage, `images/${currentUser.uid}/${Date.now()}`);
-                const snapshot = await uploadBytes(storageRef, file);
-                imageUrl = await getDownloadURL(snapshot.ref);
-            }
-
-            await addDoc(collection(db, "diaries"), {
-                userId: currentUser.uid,
-                content,
-                imageUrl,
-                timestamp: Date.now()
-            });
-            renderMain();
-        };
-
-        window.handleLogout = () => signOut(auth);
     </script>
 </body>
 </html>
