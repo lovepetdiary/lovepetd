@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>펫다이어리 프로토타입</title>
+    <title>펫다이어리 - 기획팀 공유용</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -16,20 +16,18 @@
 <body class="bg-gray-100 min-h-screen">
 
     <div id="app" class="max-w-md mx-auto bg-white min-h-screen shadow-2xl relative overflow-x-hidden">
-        <!-- 화면이 여기에 렌더링됩니다 -->
-    </div>
+        </div>
 
     <script>
-        // 애플리케이션 상태 관리
+        // 애플리케이션 상태
         let state = {
             step: 'landing',
-            petData: { name: '', age: '', mode: '' },
+            petData: { name: '', age: '', mode: '', personality: '' },
             diaries: []
         };
 
         const app = document.getElementById('app');
 
-        // 화면 렌더링 함수
         function render() {
             if (state.step === 'landing') {
                 app.innerHTML = `
@@ -38,105 +36,124 @@
                             <i class="fas fa-paw text-4xl"></i>
                         </div>
                         <h1 class="text-3xl font-black text-slate-900 mb-4 tracking-tighter">펫다이어리</h1>
-                        <p class="text-slate-500 leading-relaxed mb-12 font-medium">우리 아이와의 100일,<br>기록이 책이 되는 특별한 경험</p>
-                        <button onclick="goStep('onboarding-data')" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold text-lg shadow-xl active:scale-95 transition-all">무료로 시작하기</button>
-                        <p class="mt-10 text-[10px] text-gray-300 font-bold uppercase tracking-widest text-center w-full">Team Collaboration Mode</p>
+                        <p class="text-slate-500 leading-relaxed mb-12 font-medium italic text-sm">"기획 포인트: 감성적인 첫인상"</p>
+                        <button onclick="goStep('onboarding-data')" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold text-lg shadow-xl active:scale-95 transition-all">시작하기</button>
                     </div>
                 `;
-            } else if (state.step === 'onboarding-data') {
+            } 
+            
+            else if (state.step === 'onboarding-data') {
                 app.innerHTML = `
                     <div class="p-8 pt-20 bg-white min-h-screen flex flex-col slide-in">
-                        <h2 class="text-2xl font-black text-slate-900 mb-8 leading-tight">우리 아이의<br><span class="text-teal-500">이름과 나이</span>를 알려주세요</h2>
+                        <h2 class="text-2xl font-black text-slate-900 mb-8 leading-tight underline decoration-teal-500 underline-offset-8">1단계: 기본 정보</h2>
                         <div class="space-y-6 flex-grow">
                             <input type="text" id="petName" placeholder="아이 이름" class="w-full bg-slate-50 p-5 rounded-2xl border-none focus:ring-2 focus:ring-teal-500 outline-none" value="${state.petData.name}">
                             <input type="number" id="petAge" placeholder="나이 (숫자만)" class="w-full bg-slate-50 p-5 rounded-2xl border-none focus:ring-2 focus:ring-teal-500 outline-none" value="${state.petData.age}">
-                            <button onclick="saveData()" class="w-full bg-teal-500 text-white py-5 rounded-2xl font-bold text-lg mt-10">다음으로</button>
+                            <button onclick="saveData()" class="w-full bg-teal-500 text-white py-5 rounded-2xl font-bold text-lg mt-10 shadow-lg">다음으로</button>
                         </div>
                     </div>
                 `;
-            } else if (state.step === 'main-dashboard') {
+            }
+
+            else if (state.step === 'onboarding-mode') {
                 app.innerHTML = `
-                    <div class="min-h-screen pb-24 slide-in">
+                    <div class="p-8 pt-20 bg-white min-h-screen slide-in">
+                        <h2 class="text-2xl font-black text-slate-900 mb-2 leading-tight">2단계: 기록 모드 선택</h2>
+                        <p class="text-slate-400 text-sm mb-10 italic">나이에 따른 맞춤형 모드 추천 기획</p>
+                        <div class="space-y-4">
+                            <button onclick="selectMode('성장')" class="w-full p-6 border-2 border-slate-50 rounded-3xl bg-slate-50 hover:border-teal-500 flex items-center gap-5 transition-all">
+                                <div class="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-teal-500 shadow-sm"><i class="fas fa-chart-line"></i></div>
+                                <div class="text-left font-bold text-slate-900">성장 기록 모드</div>
+                            </button>
+                            <button onclick="selectMode('일상')" class="w-full p-6 border-2 border-slate-50 rounded-3xl bg-slate-50 hover:border-teal-500 flex items-center gap-5 transition-all">
+                                <div class="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-blue-500 shadow-sm"><i class="fas fa-camera"></i></div>
+                                <div class="text-left font-bold text-slate-900">일상 추억 모드</div>
+                            </button>
+                            <button onclick="selectMode('건강')" class="w-full p-6 border-2 border-slate-50 rounded-3xl bg-slate-50 hover:border-teal-500 flex items-center gap-5 transition-all">
+                                <div class="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-rose-500 shadow-sm"><i class="fas fa-heartbeat"></i></div>
+                                <div class="text-left font-bold text-slate-900">건강 관리 모드</div>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            else if (state.step === 'onboarding-chat') {
+                app.innerHTML = `
+                    <div class="min-h-screen bg-slate-50 p-8 pt-20 flex flex-col slide-in text-left">
+                        <h2 class="text-2xl font-black text-slate-900 mb-8 leading-tight">3단계: 대화형 온보딩</h2>
+                        <div class="flex-grow">
+                            <div class="flex gap-3 items-end">
+                                <div class="w-10 h-10 bg-teal-500 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg"><i class="fas fa-comment"></i></div>
+                                <div class="bg-white p-5 rounded-3xl rounded-bl-none shadow-sm text-sm text-slate-700 leading-relaxed border border-slate-100">
+                                    반가워요! <span class="font-bold text-teal-600">${state.petData.name}</span>(이)는 어떤 성격인가요? 산책을 좋아하나요?
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-3 py-10">
+                            <button onclick="finishOnboarding('활발함')" class="w-full bg-white border-2 border-slate-200 py-5 rounded-2xl font-bold text-slate-700 hover:border-teal-500">🏃‍♂️ 에너지가 넘쳐요!</button>
+                            <button onclick="finishOnboarding('얌전함')" class="w-full bg-white border-2 border-slate-200 py-5 rounded-2xl font-bold text-slate-700 hover:border-teal-500">🏠 얌전하고 조용해요!</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            else if (state.step === 'main-dashboard') {
+                app.innerHTML = `
+                    <div class="min-h-screen pb-24 slide-in text-left">
                         <header class="bg-white px-6 py-5 flex justify-between items-center sticky top-0 z-20 border-b border-slate-100">
                             <h1 class="text-lg font-black text-slate-900">${state.petData.name}의 기록</h1>
-                            <div class="flex gap-4 text-slate-400">
-                                <i class="fas fa-share-alt cursor-pointer"></i>
-                                <i class="fas fa-cog cursor-pointer"></i>
-                            </div>
+                            <div class="flex gap-4 text-slate-400"><i class="fas fa-share-alt"></i><i class="fas fa-cog"></i></div>
                         </header>
-                        <div class="p-6">
+                        <div class="p-6 text-left">
                             <div class="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
-                                <div class="relative z-10">
-                                    <p class="text-teal-400 font-bold text-[10px] uppercase tracking-widest mb-1">100일 챌린지</p>
-                                    <p class="text-2xl font-black mb-4">Day ${state.diaries.length}/100</p>
-                                    <div class="w-full bg-white/10 h-2 rounded-full overflow-hidden mb-4">
-                                        <div class="bg-teal-400 h-full transition-all duration-1000" style="width: ${Math.max(5, (state.diaries.length / 100) * 100)}%"></div>
-                                    </div>
-                                    <p class="text-white/40 text-[10px]">100일 기록 완료 시 실물 다이어리 무료 출판!</p>
+                                <p class="text-teal-400 font-bold text-[10px] uppercase tracking-widest mb-1">100일 챌린지</p>
+                                <p class="text-2xl font-black mb-4 italic">Day ${state.diaries.length}/100</p>
+                                <div class="w-full bg-white/10 h-2 rounded-full overflow-hidden mb-4">
+                                    <div class="bg-teal-400 h-full transition-all" style="width: ${Math.max(5, (state.diaries.length / 100) * 100)}%"></div>
                                 </div>
+                                <p class="text-white/40 text-[10px]">설정된 모드: <b>${state.petData.mode}</b> | 성격: <b>${state.petData.personality}</b></p>
                             </div>
                         </div>
-                        <div class="px-6 space-y-4" id="diaryList">
-                            <h3 class="font-black text-slate-900">최근 일기</h3>
-                            ${state.diaries.length === 0 ? `
-                                <div class="py-20 flex flex-col items-center justify-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-100 text-center">
-                                    <i class="far fa-image text-4xl text-slate-200 mb-4"></i>
-                                    <p class="text-slate-400 text-xs font-bold">첫 일기를 작성해보세요!</p>
-                                </div>
-                            ` : state.diaries.map(d => `
-                                <div class="bg-white p-5 rounded-3xl border border-slate-50 shadow-sm flex gap-4">
-                                    <div class="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-300">
-                                        <i class="fas fa-camera text-2xl"></i>
-                                    </div>
-                                    <div class="flex flex-col justify-center">
-                                        <p class="text-[10px] font-black text-teal-500 mb-1">${d.date}</p>
-                                        <p class="text-sm text-slate-700 font-medium line-clamp-3">${d.content}</p>
-                                    </div>
-                                </div>
-                            `).join('')}
+                        <div class="px-6 space-y-4">
+                            <h3 class="font-black text-slate-900">오늘의 타임라인</h3>
+                            ${state.diaries.length === 0 ? '<div class="py-20 text-center text-slate-300 font-bold">기록을 시작해주세요!</div>' : ''}
+                            <div id="diaryList" class="space-y-4"></div>
                         </div>
                         <div class="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-6">
-                            <button onclick="openModal()" class="bg-slate-900 text-white w-full py-5 rounded-2xl font-black text-lg shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all">
-                                <i class="fas fa-plus-circle"></i> 오늘 일기 쓰기
-                            </button>
+                            <button onclick="openModal()" class="bg-slate-900 text-white w-full py-5 rounded-2xl font-black text-lg shadow-2xl">일기 쓰기</button>
                         </div>
                         <div id="modal" class="fixed inset-0 bg-slate-900/60 z-50 hidden items-end justify-center p-4 backdrop-blur-sm">
                             <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl">
-                                <div class="flex justify-between items-center mb-8">
-                                    <h2 class="text-xl font-black text-slate-900">새로운 기록</h2>
-                                    <button onclick="closeModal()" class="text-slate-400 font-bold">닫기</button>
-                                </div>
-                                <textarea id="diaryContent" class="w-full bg-slate-50 rounded-3xl p-6 h-40 focus:ring-2 focus:ring-teal-500 outline-none mb-6 text-slate-700 font-medium border-none" placeholder="오늘 어떤 일이 있었나요?"></textarea>
-                                <button onclick="addDiary()" class="w-full bg-teal-500 text-white py-5 rounded-2xl font-black text-lg shadow-xl">기록 저장</button>
+                                <h2 class="text-xl font-black text-slate-900 mb-6">새로운 기록</h2>
+                                <textarea id="diaryContent" class="w-full bg-slate-50 rounded-3xl p-6 h-40 outline-none mb-6 border-none" placeholder="오늘의 일기..."></textarea>
+                                <button onclick="addDiary()" class="w-full bg-teal-500 text-white py-5 rounded-2xl font-black shadow-xl">저장</button>
                             </div>
                         </div>
                     </div>
                 `;
+                renderDiaries();
             }
         }
 
-        // 제어 함수들
-        function goStep(step) {
-            state.step = step;
-            render();
-        }
-
+        function goStep(step) { state.step = step; render(); }
+        
         function saveData() {
             state.petData.name = document.getElementById('petName').value;
             state.petData.age = document.getElementById('petAge').value;
-            if (state.petData.name && state.petData.age) {
-                goStep('main-dashboard');
-            }
+            if (state.petData.name && state.petData.age) goStep('onboarding-mode');
         }
 
+        function selectMode(mode) { state.petData.mode = mode; goStep('onboarding-chat'); }
+        function finishOnboarding(pers) { state.petData.personality = pers; goStep('main-dashboard'); }
+        
         function openModal() { document.getElementById('modal').style.display = 'flex'; }
         function closeModal() { document.getElementById('modal').style.display = 'none'; }
-
+        
         function addDiary() {
             const content = document.getElementById('diaryContent').value;
             if (!content) return;
             state.diaries.push({
-                id: Date.now(),
                 date: new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' }),
                 content: content
             });
@@ -144,7 +161,17 @@
             render();
         }
 
-        // 초기 렌더링
+        function renderDiaries() {
+            const list = document.getElementById('diaryList');
+            if(!list) return;
+            list.innerHTML = state.diaries.map(d => `
+                <div class="bg-white p-5 rounded-3xl border border-slate-50 shadow-sm">
+                    <p class="text-[10px] font-black text-teal-500 mb-1">${d.date}</p>
+                    <p class="text-sm text-slate-700 font-medium">${d.content}</p>
+                </div>
+            `).join('');
+        }
+
         render();
     </script>
 </body>
