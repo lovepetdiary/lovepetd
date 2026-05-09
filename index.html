@@ -57,8 +57,11 @@
         let chatStep = 0;
         let setupData = { profileImageUrl: '', name: '', birthDate: '', focusArea: '' };
         let backPressCount = 0;
+        
         window.currentPublicSort = 'date';
-        window.homeSlideInterval = null;
+        window.selectedDiaryDate = null;
+        window.currentPrivateViewMode = null;
+        window.currentRandomDiary = null;
 
         window.addEventListener('popstate', (event) => {
             const detailModal = document.getElementById('diaryModal');
@@ -331,6 +334,7 @@
                     phone: document.getElementById('signupPhone').value,
                     address: document.getElementById('signupAddress').value + " " + document.getElementById('signupAddressDetail').value,
                     ownerBirth: document.getElementById('signupBirth').value,
+                    preferredViewMode: 'card',
                     createdAt: Date.now()
                 });
             } catch (e) { alert("회원가입 실패: " + e.message); }
@@ -344,10 +348,6 @@
 
         function renderLayout() {
             if (!petData) return;
-            if (window.homeSlideInterval) {
-                clearInterval(window.homeSlideInterval);
-                window.homeSlideInterval = null;
-            }
             appDiv.innerHTML = `
                 <nav class="sticky top-0 bg-white/80 backdrop-blur-md z-30 border-b border-slate-100">
                     <div class="flex justify-between items-center px-6 pt-6 pb-2">
@@ -373,7 +373,12 @@
             updateContent();
         }
 
-        window.changeTab = (tab) => { activeTab = tab; history.pushState({ tab }, '', `#${tab}`); renderLayout(); };
+        window.changeTab = (tab) => { 
+            activeTab = tab; 
+            if (tab === 'diary') window.selectedDiaryDate = null;
+            history.pushState({ tab }, '', `#${tab}`); 
+            renderLayout(); 
+        };
 
         // 프로필 사진 확대 모달
         window.showProfileModal = (imgUrl, event) => {
@@ -406,20 +411,26 @@
             
             snap.forEach(doc => {
                 const data = doc.data();
+                // 며칠 차 계산은 생성일(timestamp) 기준으로만 적용
                 const date = new Date(data.timestamp).toLocaleDateString();
                 uniqueDates.add(date);
                 if (!firstDiaryTime || data.timestamp < firstDiaryTime) {
                     firstDiaryTime = data.timestamp;
                 }
                 if (data.imageUrl) {
-                    diaryImages.push(data.imageUrl);
+                    diaryImages.push({url: data.imageUrl, data: {id: doc.id, ...data}});
                 }
             });
             const diaryCount = uniqueDates.size;
             
-            if (diaryImages.length === 0) {
-                diaryImages.push(petData.profileImageUrl || 'https://via.placeholder.com/400');
+            window.currentRandomDiary = null;
+            if (diaryImages.length > 0) {
+                const randomIndex = Math.floor(Math.random() * diaryImages.length);
+                window.currentRandomDiary = diaryImages[randomIndex].data;
             }
+
+            const displayImg = window.currentRandomDiary ? window.currentRandomDiary.imageUrl : (petData.profileImageUrl || 'https://via.placeholder.com/400');
+            const onClickAction = window.currentRandomDiary ? `onclick="showDetail(window.currentRandomDiary)"` : '';
 
             const birthDateObj = new Date(petData.birthDate);
             const diffDays = Math.floor((Date.now() - birthDateObj.getTime()) / 86400000) + 1;
@@ -445,8 +456,8 @@
 
             container.innerHTML = `
                 <div class="p-6 animate-fade-in space-y-6">
-                    <div class="relative w-full aspect-square rounded-[3rem] overflow-hidden shadow-2xl bg-slate-100">
-                        <img id="homeSlideshow" src="${diaryImages[0]}" class="w-full h-full object-cover fade-transition">
+                    <div class="relative w-full aspect-square rounded-[3rem] overflow-hidden shadow-2xl bg-slate-100 ${window.currentRandomDiary ? 'cursor-pointer' : ''}" ${onClickAction}>
+                        <img src="${displayImg}" class="w-full h-full object-cover">
                         <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                         <div class="absolute bottom-8 left-8 text-white z-10">
                             <h2 class="text-3xl font-bold mb-1">${petData.name}</h2>
@@ -464,29 +475,21 @@
                         </div>
                     </div>
                 </div>`;
-                
-            // 슬라이드 쇼 적용 (5초)
-            if (diaryImages.length > 1) {
-                let slideIndex = 0;
-                window.homeSlideInterval = setInterval(() => {
-                    const imgEl = document.getElementById('homeSlideshow');
-                    if (imgEl) {
-                        slideIndex = (slideIndex + 1) % diaryImages.length;
-                        imgEl.style.opacity = '0';
-                        setTimeout(() => {
-                            imgEl.src = diaryImages[slideIndex];
-                            imgEl.style.opacity = '1';
-                        }, 500);
-                    } else {
-                        clearInterval(window.homeSlideInterval);
-                    }
-                }, 5000);
-            }
         }
 
         window.togglePublicSort = () => {
             window.currentPublicSort = window.currentPublicSort === 'date' ? 'like' : 'date';
             renderLayout();
+        };
+
+        window.setDiaryDateFilter = (date) => { 
+            window.selectedDiaryDate = date; 
+            renderLayout(); 
+        };
+        
+        window.changeViewMode = (mode) => { 
+            window.currentPrivateViewMode = mode; 
+            renderLayout(); 
         };
 
         window.toggleLike = async (diaryId, event, fromModal = false) => {
@@ -549,7 +552,13 @@
             let q = (type === 'private') ? query(collection(db, "diaries"), where("userId", "==", currentUser.uid)) : query(collection(db, "diaries"), where("isPublic", "==", true));
             const snap = await getDocs(q);
             container.innerHTML = '';
-            let list = []; snap.forEach(d => list.push({id: d.id, ...d.data()}));
+            let list = []; 
+            snap.forEach(d => {
+                let data = d.data();
+                data.diaryDate = data.diaryDate || new Date(data.timestamp).toLocaleDateString('en-CA');
+                data.title = data.title || '일기';
+                list.push({id: d.id, ...data});
+            });
             
             if (type === 'public') {
                 if (window.currentPublicSort === 'like') {
@@ -561,24 +570,19 @@
                 sortBtn.className = "px-6 pt-4 flex justify-end";
                 sortBtn.innerHTML = `<button onclick="togglePublicSort()" class="text-[11px] font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100 shadow-sm">${window.currentPublicSort === 'like' ? '공감순 <i class="fas fa-heart text-red-400"></i>' : '최신순 <i class="fas fa-clock"></i>'}</button>`;
                 container.appendChild(sortBtn);
-            } else {
-                list.sort((a,b) => b.timestamp - a.timestamp);
-            }
-
-            const grid = document.createElement('div'); grid.className = "p-6 grid gap-6 pt-4";
-            list.forEach(item => {
-                const likeCount = item.likes ? item.likes.length : 0;
-                const isLiked = item.likes && item.likes.includes(currentUser.uid);
-                const commentCount = item.comments ? item.comments.length : 0;
                 
-                const card = document.createElement('div'); card.className = "bg-white rounded-3xl overflow-hidden shadow-sm border cursor-pointer relative";
-                card.onclick = () => showDetail(item);
-                
-                let publicHeader = '';
-                if(type === 'public') {
+                const grid = document.createElement('div'); grid.className = "p-6 grid gap-6 pt-4";
+                list.forEach(item => {
+                    const likeCount = item.likes ? item.likes.length : 0;
+                    const isLiked = item.likes && item.likes.includes(currentUser.uid);
+                    const commentCount = item.comments ? item.comments.length : 0;
+                    
+                    const card = document.createElement('div'); card.className = "bg-white rounded-3xl overflow-hidden shadow-sm border cursor-pointer relative";
+                    card.onclick = () => showDetail(item);
+                    
                     const authorId = item.userEmail ? item.userEmail.split('@')[0] : '익명';
                     const authorPic = item.authorProfileImageUrl || 'https://via.placeholder.com/150';
-                    publicHeader = `
+                    let publicHeader = `
                         <div class="flex items-center gap-2">
                             <img src="${authorPic}" onclick="showProfileModal('${authorPic}', event)" class="w-5 h-5 rounded-full object-cover shadow-sm z-10 cursor-pointer">
                             <span class="text-[10px] font-bold text-slate-400 z-10 relative">by ${authorId}</span>
@@ -587,12 +591,75 @@
                                 <button onclick="toggleLike('${item.id}', event)" class="text-xs font-bold ${isLiked ? 'text-red-500' : 'text-slate-300'} bg-slate-50 px-2 py-1 rounded-full"><i class="fas fa-heart"></i> ${likeCount}</button>
                             </div>
                         </div>`;
-                }
 
-                card.innerHTML = `${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-48 object-cover">` : ''}<div class="p-5"><div class="flex justify-between items-center"><span class="text-[10px] bg-slate-100 px-2 py-1 rounded-full text-slate-500 z-10 relative">${new Date(item.timestamp).toLocaleDateString()}</span>${publicHeader}</div><p class="text-slate-700 text-sm mt-3 line-clamp-3 z-10 relative">${item.content}</p></div>`;
-                grid.appendChild(card);
-            });
-            container.appendChild(grid);
+                    card.innerHTML = `${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-48 object-cover">` : ''}<div class="p-5"><div class="flex justify-between items-center mb-2"><span class="text-[10px] bg-slate-100 px-2 py-1 rounded-full text-slate-500 z-10 relative">${item.diaryDate.replace(/-/g, '.')}</span>${publicHeader}</div><h3 class="font-bold text-slate-800 text-base mb-1 z-10 relative">${item.title}</h3><p class="text-slate-700 text-sm mt-1 line-clamp-3 z-10 relative">${item.content}</p></div>`;
+                    grid.appendChild(card);
+                });
+                container.appendChild(grid);
+                
+            } else {
+                // Private Diary
+                list.sort((a,b) => {
+                    if (a.diaryDate > b.diaryDate) return -1;
+                    if (a.diaryDate < b.diaryDate) return 1;
+                    return b.timestamp - a.timestamp;
+                });
+
+                let mode = window.currentPrivateViewMode || userData?.preferredViewMode || 'card';
+                const uniqueDates = [...new Set(list.map(d => d.diaryDate))];
+                
+                let headerDiv = document.createElement('div');
+                headerDiv.className = "flex justify-between items-center px-6 pt-4 gap-2";
+                
+                let dateChips = `<button onclick="setDiaryDateFilter(null)" class="flex-none px-3 py-1.5 rounded-full text-xs font-bold ${!window.selectedDiaryDate ? 'bg-teal-500 text-white' : 'bg-slate-100 text-slate-500'}">전체</button>`;
+                uniqueDates.forEach(date => {
+                    let isSel = window.selectedDiaryDate === date;
+                    dateChips += `<button onclick="setDiaryDateFilter('${date}')" class="flex-none px-3 py-1.5 rounded-full text-xs font-bold ${isSel ? 'bg-teal-500 text-white' : 'bg-slate-100 text-slate-500'}">${date.substring(5).replace('-','.')}</button>`;
+                });
+
+                headerDiv.innerHTML = `
+                    <div class="flex overflow-x-auto no-scrollbar gap-2 items-center w-[80%]">${dateChips}</div>
+                    <div class="flex gap-2 w-[20%] justify-end">
+                        <button onclick="changeViewMode('card')" class="text-lg ${mode === 'card' ? 'text-teal-500' : 'text-slate-300'}"><i class="fas fa-th-large"></i></button>
+                        <button onclick="changeViewMode('list')" class="text-lg ${mode === 'list' ? 'text-teal-500' : 'text-slate-300'}"><i class="fas fa-list"></i></button>
+                    </div>
+                `;
+                container.appendChild(headerDiv);
+
+                let filteredList = window.selectedDiaryDate ? list.filter(d => d.diaryDate === window.selectedDiaryDate) : list;
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = mode === 'card' ? "p-6 grid gap-6 pt-4" : "p-6 flex flex-col gap-3 pt-4";
+                
+                filteredList.forEach(item => {
+                    const card = document.createElement('div');
+                    card.onclick = () => showDetail(item);
+                    
+                    if (mode === 'card') {
+                        card.className = "bg-white rounded-3xl overflow-hidden shadow-sm border cursor-pointer relative";
+                        card.innerHTML = `${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-48 object-cover">` : ''}
+                        <div class="p-5">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-[10px] bg-slate-100 px-2 py-1 rounded-full text-slate-500 z-10 relative">${item.diaryDate.replace(/-/g, '.')}</span>
+                            </div>
+                            <h3 class="font-bold text-slate-800 text-base mb-1 z-10 relative">${item.title}</h3>
+                            <p class="text-slate-700 text-sm line-clamp-3 z-10 relative">${item.content}</p>
+                        </div>`;
+                    } else {
+                        card.className = "flex items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border cursor-pointer relative";
+                        card.innerHTML = `
+                            <div class="text-[11px] font-bold text-slate-500 w-12 text-center leading-tight flex-none">${item.diaryDate.substring(5).replace('-','.')}</div>
+                            ${item.imageUrl ? `<img src="${item.imageUrl}" class="w-12 h-12 rounded-lg object-cover flex-none">` : `<div class="w-12 h-12 rounded-lg bg-slate-50 border border-slate-100 flex flex-none items-center justify-center text-slate-300"><i class="fas fa-image"></i></div>`}
+                            <div class="flex-1 min-w-0 pr-2">
+                                <div class="font-bold text-sm text-slate-800 truncate">${item.title}</div>
+                                <div class="text-[11px] text-slate-400 truncate mt-0.5">${item.content}</div>
+                            </div>
+                        `;
+                    }
+                    contentDiv.appendChild(card);
+                });
+                container.appendChild(contentDiv);
+            }
         }
 
         window.showDetail = async (item, isRefresh = false) => {
@@ -600,7 +667,10 @@
             
             const docRef = doc(db, "diaries", item.id);
             const docSnap = await getDoc(docRef);
-            if(docSnap.exists()) item = {id: docSnap.id, ...docSnap.data()};
+            if(docSnap.exists()) {
+                const dData = docSnap.data();
+                item = {id: docSnap.id, ...dData, diaryDate: dData.diaryDate || new Date(dData.timestamp).toLocaleDateString('en-CA'), title: dData.title || '일기'};
+            }
 
             const existingModal = document.getElementById('diaryModal');
             if(existingModal) existingModal.remove();
@@ -611,7 +681,7 @@
             let authorStr = '';
             let commentsHTML = '';
 
-            if (activeTab === 'public') {
+            if (item.isPublic && activeTab === 'public') {
                 const authorId = item.userEmail ? item.userEmail.split('@')[0] : '익명';
                 const authorPic = item.authorProfileImageUrl || 'https://via.placeholder.com/150';
                 authorStr = `
@@ -648,15 +718,16 @@
                     <div class="p-8 overflow-y-auto flex-1 no-scrollbar">
                         <div class="flex justify-between items-center mb-4">
                             <div class="flex items-center">
-                                <span class="text-xs font-bold text-teal-600">${new Date(item.timestamp).toLocaleDateString()}</span>
+                                <span class="text-xs font-bold text-teal-600">${item.diaryDate.replace(/-/g, '.')}</span>
                                 ${authorStr}
                             </div>
                             <div class="flex gap-3 items-center">
                                 ${activeTab === 'public' ? `<button onclick="toggleLike('${item.id}', event, true)" class="text-xs font-bold ${isLiked ? 'text-red-500' : 'text-slate-300'} bg-slate-50 px-2 py-1 rounded-full"><i class="fas fa-heart"></i> ${likeCount}</button>` : ''}
-                                ${item.userId === currentUser.uid ? `<button onclick='renderWrite(${JSON.stringify(item)})' class="text-xs font-bold text-slate-400">수정</button><button onclick="deleteDiary('${item.id}')" class="text-xs font-bold text-red-400">삭제</button>` : ''}
+                                ${item.userId === currentUser.uid ? `<button onclick='renderWrite(${JSON.stringify(item).replace(/'/g, "&#39;")})' class="text-xs font-bold text-slate-400">수정</button><button onclick="deleteDiary('${item.id}')" class="text-xs font-bold text-red-400">삭제</button>` : ''}
                                 <button onclick="history.back()" class="text-slate-300 text-lg ml-1"><i class="fas fa-times"></i></button>
                             </div>
                         </div>
+                        <h3 class="font-bold text-xl text-slate-800 mb-3">${item.title}</h3>
                         <p class="text-slate-800 text-sm leading-relaxed">${item.content}</p>
                         ${commentsHTML}
                     </div>
@@ -675,11 +746,43 @@
             const openModal = document.getElementById('diaryModal');
             if(openModal) openModal.remove();
             
-            appDiv.innerHTML = `<div class="p-8 animate-fade-in flex-1 bg-white h-screen overflow-y-auto pb-20"><div class="flex justify-between items-center mb-10"><button onclick="history.back()" class="text-slate-400"><i class="fas fa-arrow-left"></i></button><h2 class="font-bold text-lg">기록하기</h2><button onclick="saveDiary('${editData ? editData.id : ''}')" class="text-teal-600 font-bold">저장</button></div><div class="space-y-6"><div id="imagePreview" onclick="document.getElementById('fileInput').click()" class="w-full h-64 bg-slate-50 rounded-[2rem] flex flex-col items-center justify-center border-2 border-dashed border-slate-200 overflow-hidden">${editData && editData.imageUrl ? `<img src="${editData.imageUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-camera text-slate-200"></i>'}</div><input type="file" id="fileInput" class="hidden" accept="image/*" onchange="previewImage(event)"><textarea id="diaryContent" rows="8" class="w-full p-6 bg-slate-50 rounded-[2rem] outline-none text-sm">${editData ? editData.content : ''}</textarea><div class="flex items-center gap-3"><input type="checkbox" id="isPublic" class="w-5 h-5 accent-teal-500" ${editData && editData.isPublic ? 'checked' : ''}><label for="isPublic" class="text-sm font-bold text-slate-600">공개하기</label></div></div></div>`;
+            const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+            
+            appDiv.innerHTML = `
+                <div class="p-8 animate-fade-in flex-1 bg-white h-screen overflow-y-auto pb-20">
+                    <div class="flex justify-between items-center mb-10">
+                        <button onclick="history.back()" class="text-slate-400"><i class="fas fa-arrow-left"></i></button>
+                        <h2 class="font-bold text-lg">기록하기</h2>
+                        <button onclick="saveDiary('${editData ? editData.id : ''}')" class="text-teal-600 font-bold">저장</button>
+                    </div>
+                    <div class="space-y-6">
+                        <div class="flex items-center gap-4">
+                            <label class="text-xs font-bold text-slate-600 w-12">날짜</label>
+                            <input type="date" id="diaryDateInput" value="${editData?.diaryDate || todayStr}" class="p-3 bg-slate-50 rounded-xl outline-none text-slate-600 text-sm flex-1 font-bold">
+                        </div>
+                        
+                        <input type="text" id="diaryTitle" placeholder="일기 제목을 입력해주세요" value="${editData?.title || ''}" class="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-slate-800 text-lg border border-transparent focus:border-teal-500">
+                        
+                        <div id="imagePreview" onclick="document.getElementById('fileInput').click()" class="w-full h-64 bg-slate-50 rounded-[2rem] flex flex-col items-center justify-center border-2 border-dashed border-slate-200 overflow-hidden cursor-pointer">
+                            ${editData && editData.imageUrl ? `<img src="${editData.imageUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-camera text-slate-200 text-2xl mb-2"></i><span class="text-xs text-slate-400 font-bold">사진 추가</span>'}
+                        </div>
+                        <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="previewImage(event)">
+                        
+                        <textarea id="diaryContent" rows="8" placeholder="오늘 아이와 어떤 일이 있었나요?" class="w-full p-6 bg-slate-50 rounded-[2rem] outline-none text-sm leading-relaxed border border-transparent focus:border-teal-500">${editData ? editData.content : ''}</textarea>
+                        
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" id="isPublic" class="w-5 h-5 accent-teal-500" ${editData && editData.isPublic ? 'checked' : ''}>
+                            <label for="isPublic" class="text-sm font-bold text-slate-600">공개 일기로 등록하기</label>
+                        </div>
+                    </div>
+                </div>`;
         };
 
         window.renderEditPet = function() {
             history.pushState({ popup: 'edit' }, '', '#edit');
+            
+            const currentPrefMode = userData?.preferredViewMode || 'card';
+            
             appDiv.innerHTML = `
                 <div class="p-8 animate-fade-in flex-1 bg-white h-screen overflow-y-auto pb-20">
                     <div class="flex justify-between items-center mb-10">
@@ -700,6 +803,17 @@
                         <div>
                             <label class="text-xs font-bold text-slate-500 ml-1">생일/입양일</label>
                             <input id="editPetBirth" type="date" value="${petData.birthDate}" class="w-full p-4 mt-1 bg-slate-50 rounded-xl outline-none">
+                        </div>
+                        <div class="pt-6 border-t border-slate-100">
+                            <label class="text-xs font-bold text-slate-500 ml-1">내 일기 기본 보기 설정</label>
+                            <div class="flex gap-2 mt-2">
+                                <label class="flex-1 p-3 bg-slate-50 rounded-xl flex items-center justify-center gap-2 cursor-pointer text-sm font-bold text-slate-600">
+                                    <input type="radio" name="preferredViewMode" value="card" class="accent-teal-500" ${currentPrefMode !== 'list' ? 'checked' : ''}> 카드형
+                                </label>
+                                <label class="flex-1 p-3 bg-slate-50 rounded-xl flex items-center justify-center gap-2 cursor-pointer text-sm font-bold text-slate-600">
+                                    <input type="radio" name="preferredViewMode" value="list" class="accent-teal-500" ${currentPrefMode === 'list' ? 'checked' : ''}> 리스트형
+                                </label>
+                            </div>
                         </div>
                         <div class="pt-6 border-t border-slate-100">
                             <label class="text-xs font-bold text-slate-500 ml-1">보호자 연락처</label>
@@ -770,14 +884,19 @@
 
         window.saveDiary = async (id = '') => {
             const content = document.getElementById('diaryContent').value;
+            const title = document.getElementById('diaryTitle').value.trim() || '제목 없음';
+            const diaryDate = document.getElementById('diaryDateInput').value || new Date().toISOString().split('T')[0];
             const file = document.getElementById('fileInput').files[0];
             let imageUrl = '';
+            
             if (file) {
                 const snap = await uploadBytes(ref(storage, `diaries/${currentUser.uid}/${Date.now()}`), file);
                 imageUrl = await getDownloadURL(snap.ref);
             }
             
             const diaryData = { 
+                title,
+                diaryDate,
                 content, 
                 isPublic: document.getElementById('isPublic').checked, 
                 userId: currentUser.uid, 
@@ -807,10 +926,16 @@
             
             await updateDoc(doc(db, "pets", currentUser.uid), { name: document.getElementById('editPetName').value, birthDate: document.getElementById('editPetBirth').value, profileImageUrl });
             
+            const prefMode = document.querySelector('input[name="preferredViewMode"]:checked').value;
+            
             await updateDoc(doc(db, "users", currentUser.uid), {
                 phone: document.getElementById('editUserPhone').value,
-                address: document.getElementById('editUserAddress').value
+                address: document.getElementById('editUserAddress').value,
+                preferredViewMode: prefMode
             });
+            
+            if(userData) userData.preferredViewMode = prefMode;
+            window.currentPrivateViewMode = prefMode;
             
             await refreshPetData();
             history.back();
