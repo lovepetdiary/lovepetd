@@ -17,6 +17,9 @@
         #toast { visibility: hidden; min-width: 250px; margin-left: -125px; background-color: #333; color: #fff; text-align: center; border-radius: 12px; padding: 16px; position: fixed; z-index: 100; left: 50%; bottom: 50px; font-size: 14px; }
         #toast.show { visibility: visible; animation: fadeIn 0.3s, fadeOut 0.3s 2.5s; }
         @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        /* 스크롤바 숨김 (댓글 영역 등) */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body>
@@ -27,7 +30,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, fetchSignInMethodsForEmail, deleteUser, EmailAuthProvider, reauthenticateWithCredential } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, collection, addDoc, query, where, getDocs, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, collection, addDoc, query, where, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
         const firebaseConfig = {
@@ -48,14 +51,13 @@
         const appDiv = document.getElementById('app');
         let currentUser = null;
         let petData = null;
-        let userData = null; // 유저 정보 추가 (주소, 번호 등)
+        let userData = null;
         let activeTab = 'home'; 
         let chatStep = 0;
         let setupData = { profileImageUrl: '', name: '', birthDate: '', focusArea: '' };
         let backPressCount = 0;
-        window.currentPublicSort = 'date'; // 공개일기 정렬 상태
+        window.currentPublicSort = 'date';
 
-        // 스마트한 뒤로 가기 및 모달 제어
         window.addEventListener('popstate', (event) => {
             const detailModal = document.getElementById('diaryModal');
             if (detailModal) detailModal.remove();
@@ -74,7 +76,7 @@
                         history.pushState({ tab: 'home' }, '', '#home');
                         setTimeout(() => { backPressCount = 0; }, 2000);
                     } else if (backPressCount === 2) {
-                        window.location.replace('about:blank'); // 브라우저 종료/홈화면 이동 효과
+                        window.location.replace('about:blank');
                     }
                 } else {
                     activeTab = 'home';
@@ -143,7 +145,6 @@
             }).open();
         };
 
-        // 정보 수정창용 주소 찾기
         window.execDaumPostcodeEdit = () => {
             new daum.Postcode({
                 oncomplete: function(data) {
@@ -275,7 +276,7 @@
                 setTimeout(() => {
                     appendBotMsg(`'${setupData.name}'! 이름이 참 예뻐요. 😊`);
                     setTimeout(() => {
-                        appendBotMsg(`${setupData.name}가 태어난 날이나 입양된 날짜를 알려주시면, 제가 100일 기념일을 계산해 드릴게요!`);
+                        appendBotMsg(`${setupData.name}가 태어난 날이나 입양된 날짜를 알려주시면, 제가 특별한 날들을 계산해 드릴게요!`);
                         inputArea.innerHTML = `<input type="date" id="setupBirthInput" class="flex-1 p-3 bg-slate-100 rounded-xl outline-none mr-2 px-4 text-slate-600"><button onclick="handleSetupBirth()" class="w-12 h-12 bg-teal-500 text-white rounded-xl flex items-center justify-center"><i class="fas fa-paper-plane"></i></button>`;
                     }, 1000);
                 }, 500);
@@ -354,23 +355,63 @@
 
         async function renderHome(container) {
             const snap = await getDocs(query(collection(db, "diaries"), where("userId", "==", currentUser.uid)));
+            
+            let firstDiaryTime = null;
             const uniqueDates = new Set();
+            
             snap.forEach(doc => {
-                const date = new Date(doc.data().timestamp).toLocaleDateString();
+                const data = doc.data();
+                const date = new Date(data.timestamp).toLocaleDateString();
                 uniqueDates.add(date);
+                if (!firstDiaryTime || data.timestamp < firstDiaryTime) {
+                    firstDiaryTime = data.timestamp;
+                }
             });
             const diaryCount = uniqueDates.size;
             
             const birthDateObj = new Date(petData.birthDate);
             const diffDays = Math.floor((Date.now() - birthDateObj.getTime()) / 86400000) + 1;
             
-            // 100일 D-Day 계산
-            const hundredDateObj = new Date(birthDateObj.getTime() + 99 * 86400000);
-            const hundredDateStr = hundredDateObj.getFullYear() + '.' + (hundredDateObj.getMonth()+1).toString().padStart(2, '0') + '.' + hundredDateObj.getDate().toString().padStart(2, '0');
-            const remainDays = 100 - diffDays;
-            const ddayStr = remainDays > 0 ? `D-${remainDays}` : (remainDays < 0 ? `D+${Math.abs(remainDays)}` : `D-Day`);
+            // 100일 D-Day 계산 (첫 일기 기준)
+            let hundredDateStr = '-';
+            let ddayStr = '기록 없음';
+            
+            if (firstDiaryTime) {
+                const firstDateObj = new Date(firstDiaryTime);
+                firstDateObj.setHours(0,0,0,0);
+                const hundredDateObj = new Date(firstDateObj.getTime() + 99 * 86400000); // 첫 일기 + 99일 = 100일째
+                hundredDateStr = hundredDateObj.getFullYear() + '.' + (hundredDateObj.getMonth()+1).toString().padStart(2, '0') + '.' + hundredDateObj.getDate().toString().padStart(2, '0');
+                
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                const remainDays = Math.floor((hundredDateObj.getTime() - today.getTime()) / 86400000);
+                ddayStr = remainDays > 0 ? `D-${remainDays}` : (remainDays < 0 ? `D+${Math.abs(remainDays)}` : `D-Day`);
+            } else {
+                hundredDateStr = '일기 작성 대기중';
+                ddayStr = '첫 일기를 써주세요';
+            }
 
-            container.innerHTML = `<div class="p-6 animate-fade-in space-y-6"><div class="relative w-full aspect-square rounded-[3rem] overflow-hidden shadow-2xl"><img src="${petData.profileImageUrl || 'https://via.placeholder.com/400'}" class="w-full h-full object-cover"><div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div><div class="absolute bottom-8 left-8 text-white"><h2 class="text-3xl font-bold mb-1">${petData.name}</h2><p class="text-teal-300 font-bold">생후 ${diffDays}일째 · ${petData.focusArea}</p></div></div><div class="grid grid-cols-2 gap-4"><div class="bg-teal-50 p-6 rounded-[2rem] border border-teal-100"><p class="text-xs text-teal-600 font-bold mb-1">작성한 일기</p><p class="text-2xl font-black text-teal-800">${diaryCount}<span class="text-sm font-normal ml-1">일차</span></p></div><div class="bg-orange-50 p-6 rounded-[2rem] border border-orange-100"><p class="text-xs text-orange-600 font-bold mb-1">목표 <span class="ml-1 text-[10px] font-normal text-orange-500">${hundredDateStr} (${ddayStr})</span></p><p class="text-lg font-black text-orange-800">100일 완성</p></div></div></div>`;
+            container.innerHTML = `
+                <div class="p-6 animate-fade-in space-y-6">
+                    <div class="relative w-full aspect-square rounded-[3rem] overflow-hidden shadow-2xl">
+                        <img src="${petData.profileImageUrl || 'https://via.placeholder.com/400'}" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                        <div class="absolute bottom-8 left-8 text-white">
+                            <h2 class="text-3xl font-bold mb-1">${petData.name}</h2>
+                            <p class="text-teal-300 font-bold">생후 ${diffDays}일째 · ${petData.focusArea}</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-teal-50 p-6 rounded-[2rem] border border-teal-100 flex flex-col justify-center">
+                            <p class="text-xs text-teal-600 font-bold mb-1">작성한 일기</p>
+                            <p class="text-2xl font-black text-teal-800">${diaryCount}<span class="text-sm font-normal ml-1">일차</span></p>
+                        </div>
+                        <div class="bg-orange-50 p-5 rounded-[2rem] border border-orange-100 flex flex-col justify-center">
+                            <p class="text-xs text-orange-600 font-bold mb-1">목표 <span class="ml-1 text-[10px] font-normal text-orange-500 block sm:inline mt-1 sm:mt-0">${hundredDateStr}</span></p>
+                            <p class="text-lg font-black text-orange-800 leading-tight">100일 완성 <span class="text-sm ml-1 text-orange-600 block sm:inline">${ddayStr}</span></p>
+                        </div>
+                    </div>
+                </div>`;
         }
 
         window.togglePublicSort = () => {
@@ -391,14 +432,48 @@
             }
             await updateDoc(docRef, { likes });
             
-            updateContent(); // 배경 리스트 갱신
+            updateContent(); 
             
-            // 모달 안에서 눌렀을 경우 UI 즉시 갱신
             if (fromModal) {
-                const btn = event.currentTarget;
-                const isLiked = likes.includes(currentUser.uid);
-                btn.className = `text-xs font-bold ${isLiked ? 'text-red-500' : 'text-slate-300'}`;
-                btn.innerHTML = `<i class="fas fa-heart"></i> ${likes.length}`;
+                showDetail({id: diaryId}, true); 
+            }
+        };
+
+        // 댓글 등록 기능
+        window.addComment = async (diaryId) => {
+            const input = document.getElementById('commentInput');
+            if(!input.value.trim()) return;
+            const docRef = doc(db, "diaries", diaryId);
+            const d = await getDoc(docRef);
+            const comments = d.data().comments || [];
+            comments.push({
+                id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                userId: currentUser.uid,
+                userEmail: currentUser.email,
+                content: input.value.trim(),
+                timestamp: Date.now(),
+                likes: []
+            });
+            await updateDoc(docRef, { comments });
+            showDetail({id: diaryId}, true); 
+        };
+
+        // 댓글 공감 기능
+        window.toggleCommentLike = async (diaryId, commentId) => {
+            const docRef = doc(db, "diaries", diaryId);
+            const d = await getDoc(docRef);
+            let comments = d.data().comments || [];
+            const commentIndex = comments.findIndex(c => c.id === commentId);
+            if (commentIndex > -1) {
+                let likes = comments[commentIndex].likes || [];
+                if (likes.includes(currentUser.uid)) {
+                    likes = likes.filter(uid => uid !== currentUser.uid);
+                } else {
+                    likes.push(currentUser.uid);
+                }
+                comments[commentIndex].likes = likes;
+                await updateDoc(docRef, { comments });
+                showDetail({id: diaryId}, true); 
             }
         };
 
@@ -426,14 +501,15 @@
             list.forEach(item => {
                 const likeCount = item.likes ? item.likes.length : 0;
                 const isLiked = item.likes && item.likes.includes(currentUser.uid);
+                const commentCount = item.comments ? item.comments.length : 0;
                 
                 const card = document.createElement('div'); card.className = "bg-white rounded-3xl overflow-hidden shadow-sm border cursor-pointer";
                 card.onclick = () => showDetail(item);
                 
                 let publicHeader = '';
                 if(type === 'public') {
-                    const authorId = item.userEmail ? item.userEmail.split('@')[0] : 'Unknown';
-                    publicHeader = `<div class="flex items-center gap-2"><span class="text-[10px] font-bold text-slate-400">by ${authorId}</span><button onclick="toggleLike('${item.id}', event)" class="text-xs font-bold ${isLiked ? 'text-red-500' : 'text-slate-300'} bg-slate-50 px-2 py-1 rounded-full"><i class="fas fa-heart"></i> ${likeCount}</button></div>`;
+                    const authorId = item.userEmail ? item.userEmail.split('@')[0] : '익명';
+                    publicHeader = `<div class="flex items-center gap-2"><span class="text-[10px] font-bold text-slate-400">by ${authorId}</span><div class="flex gap-1 items-center"><span class="text-[10px] text-slate-300 mr-1"><i class="fas fa-comment"></i> ${commentCount}</span><button onclick="toggleLike('${item.id}', event)" class="text-xs font-bold ${isLiked ? 'text-red-500' : 'text-slate-300'} bg-slate-50 px-2 py-1 rounded-full"><i class="fas fa-heart"></i> ${likeCount}</button></div></div>`;
                 }
 
                 card.innerHTML = `${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-48 object-cover">` : ''}<div class="p-5"><div class="flex justify-between items-center"><span class="text-[10px] bg-slate-100 px-2 py-1 rounded-full text-slate-500">${new Date(item.timestamp).toLocaleDateString()}</span>${publicHeader}</div><p class="text-slate-700 text-sm mt-3 line-clamp-3">${item.content}</p></div>`;
@@ -442,27 +518,75 @@
             container.appendChild(grid);
         }
 
-        window.showDetail = async (item) => {
-            history.pushState({ popup: 'detail' }, '', '#detail'); // 팝업 띄울 때 상태 푸시
+        window.showDetail = async (item, isRefresh = false) => {
+            if (!isRefresh) history.pushState({ popup: 'detail' }, '', '#detail');
             
             const docRef = doc(db, "diaries", item.id);
             const docSnap = await getDoc(docRef);
             if(docSnap.exists()) item = {id: docSnap.id, ...docSnap.data()};
 
+            const existingModal = document.getElementById('diaryModal');
+            if(existingModal) existingModal.remove();
+
             const likeCount = item.likes ? item.likes.length : 0;
             const isLiked = item.likes && item.likes.includes(currentUser.uid);
             
             let authorStr = '';
+            let commentsHTML = '';
+
             if (activeTab === 'public') {
-                const authorId = item.userEmail ? item.userEmail.split('@')[0] : 'Unknown';
+                const authorId = item.userEmail ? item.userEmail.split('@')[0] : '익명';
                 authorStr = `<span class="text-xs font-bold text-slate-400 ml-2 border-l border-slate-200 pl-2">by ${authorId}</span>`;
+                
+                // 공개 일기 댓글 영역
+                commentsHTML = `
+                    <div class="mt-6 pt-6 border-t border-slate-100">
+                        <h4 class="text-sm font-bold text-slate-800 mb-4">댓글 <span class="text-teal-500">${item.comments ? item.comments.length : 0}</span></h4>
+                        <div id="commentsList" class="space-y-3 mb-4 max-h-48 overflow-y-auto pr-1 no-scrollbar">
+                            ${(item.comments || []).map(c => {
+                                const cLikes = c.likes || [];
+                                const cIsLiked = cLikes.includes(currentUser.uid);
+                                const cAuthor = c.userEmail ? c.userEmail.split('@')[0] : '익명';
+                                return `<div class="flex justify-between items-start bg-slate-50 p-3 rounded-2xl"><div><div class="text-[10px] font-bold text-slate-500 mb-1">${cAuthor}</div><div class="text-xs text-slate-700 leading-relaxed">${c.content}</div></div><button onclick="toggleCommentLike('${item.id}', '${c.id}')" class="text-[10px] font-bold ${cIsLiked ? 'text-red-500' : 'text-slate-300'} bg-white px-2 py-1 rounded-full shadow-sm whitespace-nowrap ml-3"><i class="fas fa-heart"></i> ${cLikes.length}</button></div>`;
+                            }).join('')}
+                        </div>
+                        <div class="flex gap-2">
+                            <input id="commentInput" type="text" placeholder="댓글을 남겨보세요" class="flex-1 p-3 bg-slate-50 border border-slate-100 rounded-xl outline-none text-xs focus:border-teal-500">
+                            <button onclick="addComment('${item.id}')" class="px-4 bg-teal-500 text-white rounded-xl text-xs font-bold shadow-sm">등록</button>
+                        </div>
+                    </div>
+                `;
             }
 
             const modal = document.createElement('div');
             modal.id = "diaryModal";
             modal.className = "fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 animate-fade-in";
-            modal.innerHTML = `<div class="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden max-h-[85vh] flex flex-col shadow-2xl relative">${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-64 object-cover">` : ''}<div class="p-8 overflow-y-auto"><div class="flex justify-between items-center mb-4"><div><span class="text-xs font-bold text-teal-600">${new Date(item.timestamp).toLocaleDateString()}</span>${authorStr}</div><div class="flex gap-3 items-center">${activeTab === 'public' ? `<button onclick="toggleLike('${item.id}', event, true)" class="text-xs font-bold ${isLiked ? 'text-red-500' : 'text-slate-300'}"><i class="fas fa-heart"></i> ${likeCount}</button>` : ''}${item.userId === currentUser.uid ? `<button onclick='renderWrite(${JSON.stringify(item)})' class="text-xs font-bold text-slate-400">수정</button><button onclick="deleteDiary('${item.id}')" class="text-xs font-bold text-red-400">삭제</button>` : ''}<button onclick="history.back()" class="text-slate-300 text-lg ml-1"><i class="fas fa-times"></i></button></div></div><p class="text-slate-800 text-sm leading-relaxed">${item.content}</p></div></div>`;
+            modal.innerHTML = `
+                <div class="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden max-h-[85vh] flex flex-col shadow-2xl relative">
+                    ${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-48 object-cover flex-shrink-0">` : ''}
+                    <div class="p-8 overflow-y-auto flex-1 no-scrollbar">
+                        <div class="flex justify-between items-center mb-4">
+                            <div>
+                                <span class="text-xs font-bold text-teal-600">${new Date(item.timestamp).toLocaleDateString()}</span>
+                                ${authorStr}
+                            </div>
+                            <div class="flex gap-3 items-center">
+                                ${activeTab === 'public' ? `<button onclick="toggleLike('${item.id}', event, true)" class="text-xs font-bold ${isLiked ? 'text-red-500' : 'text-slate-300'} bg-slate-50 px-2 py-1 rounded-full"><i class="fas fa-heart"></i> ${likeCount}</button>` : ''}
+                                ${item.userId === currentUser.uid ? `<button onclick='renderWrite(${JSON.stringify(item)})' class="text-xs font-bold text-slate-400">수정</button><button onclick="deleteDiary('${item.id}')" class="text-xs font-bold text-red-400">삭제</button>` : ''}
+                                <button onclick="history.back()" class="text-slate-300 text-lg ml-1"><i class="fas fa-times"></i></button>
+                            </div>
+                        </div>
+                        <p class="text-slate-800 text-sm leading-relaxed">${item.content}</p>
+                        ${commentsHTML}
+                    </div>
+                </div>
+            `;
             document.body.appendChild(modal);
+
+            if (isRefresh && activeTab === 'public') {
+                const list = document.getElementById('commentsList');
+                if(list) list.scrollTop = list.scrollHeight;
+            }
         };
 
         window.renderWrite = (editData = null) => {
@@ -516,7 +640,6 @@
             `;
         };
 
-        // 회원 탈퇴 모달 UI (prompt 대체)
         window.confirmWithdrawal = () => {
             const modal = document.createElement('div');
             modal.id = "withdrawModal";
@@ -560,7 +683,7 @@
         window.deleteDiary = async (id) => {
             if (confirm("정말 이 일기를 삭제하시겠습니까?")) {
                 await deleteDoc(doc(db, "diaries", id));
-                history.back(); // 모달 닫기
+                history.back();
             }
         };
 
@@ -573,7 +696,6 @@
                 imageUrl = await getDownloadURL(snap.ref);
             }
             
-            // 작성자 이메일 저장
             const diaryData = { content, isPublic: document.getElementById('isPublic').checked, userId: currentUser.uid, userEmail: currentUser.email };
             if (imageUrl) diaryData.imageUrl = imageUrl;
             
@@ -581,10 +703,11 @@
                 await updateDoc(doc(db, "diaries", id), diaryData);
             } else {
                 diaryData.timestamp = Date.now();
-                diaryData.likes = []; // 공감 배열 초기화
+                diaryData.likes = [];
+                diaryData.comments = [];
                 await addDoc(collection(db, "diaries"), diaryData);
             }
-            history.back(); // 모달 닫고 리스트 갱신
+            history.back(); 
         };
 
         window.savePetInfoUpdate = async () => {
@@ -595,17 +718,15 @@
                 profileImageUrl = await getDownloadURL(snap.ref);
             }
             
-            // 펫 정보 업데이트
             await updateDoc(doc(db, "pets", currentUser.uid), { name: document.getElementById('editPetName').value, birthDate: document.getElementById('editPetBirth').value, profileImageUrl });
             
-            // 보호자 정보 업데이트
             await updateDoc(doc(db, "users", currentUser.uid), {
                 phone: document.getElementById('editUserPhone').value,
                 address: document.getElementById('editUserAddress').value
             });
             
             await refreshPetData();
-            history.back(); // 정보수정 창 닫기
+            history.back();
         };
 
         window.handleLogout = () => signOut(auth);
