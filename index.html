@@ -17,12 +17,9 @@
         #toast { visibility: hidden; min-width: 250px; margin-left: -125px; background-color: #333; color: #fff; text-align: center; border-radius: 12px; padding: 16px; position: fixed; z-index: 100; left: 50%; bottom: 50px; font-size: 14px; }
         #toast.show { visibility: visible; animation: fadeIn 0.3s, fadeOut 0.3s 2.5s; }
         @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-        /* 스크롤바 숨김 (댓글 영역 등) */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .fade-transition { transition: opacity 0.5s ease-in-out; }
-        
-        /* 1. 캘린더 날짜 아래 점 표시를 위한 스타일 */
         .dot-indicator { width: 4px; height: 4px; background-color: #14b8a6; border-radius: 50%; margin: 0 auto; margin-top: 2px; }
     </style>
 </head>
@@ -366,9 +363,11 @@
                     </div>
                     <div class="flex overflow-x-auto no-scrollbar px-2">
                         <button onclick="changeTab('home')" class="flex-none px-4 py-3 text-sm ${activeTab === 'home' ? 'tab-active' : 'text-slate-400'}">홈</button>
+                        <button onclick="changeTab('intro')" class="flex-none px-4 py-3 text-sm ${activeTab === 'intro' ? 'tab-active' : 'text-slate-400'}">소개</button>
                         <button onclick="changeTab('diary')" class="flex-none px-4 py-3 text-sm ${activeTab === 'diary' ? 'tab-active' : 'text-slate-400'}">내 일기</button>
                         <button onclick="changeTab('public')" class="flex-none px-4 py-3 text-sm ${activeTab === 'public' ? 'tab-active' : 'text-slate-400'}">공개일기</button>
                         <button onclick="changeTab('store')" class="flex-none px-4 py-3 text-sm ${activeTab === 'store' ? 'tab-active' : 'text-slate-400'}">스토어</button>
+                        <button onclick="changeTab('community')" class="flex-none px-4 py-3 text-sm ${activeTab === 'community' ? 'tab-active' : 'text-slate-400'}">킁킁 🐾</button>
                     </div>
                 </nav>
                 <div id="content-area" class="flex-1 overflow-y-auto pb-20"></div>
@@ -384,7 +383,6 @@
             renderLayout(); 
         };
 
-        // 프로필 사진 확대 모달
         window.showProfileModal = (imgUrl, event) => {
             if(event) event.stopPropagation();
             const modal = document.createElement('div');
@@ -401,10 +399,136 @@
         async function updateContent() {
             const area = document.getElementById('content-area');
             if (activeTab === 'home') renderHome(area);
+            else if (activeTab === 'intro') renderIntro(area);
             else if (activeTab === 'diary') renderDiaryList(area, 'private');
             else if (activeTab === 'public') renderDiaryList(area, 'public');
+            else if (activeTab === 'community') renderCommunity(area);
             else if (activeTab === 'store') area.innerHTML = '<div class="py-20 text-center text-slate-400">스토어 준비 중입니다.</div>';
         }
+
+        function renderIntro(container) {
+            container.innerHTML = `
+                <div class="p-6 animate-fade-in space-y-6 pb-24">
+                    <div class="text-center py-6">
+                        <div class="w-16 h-16 bg-teal-100 text-teal-500 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-sm"><i class="fas fa-gift"></i></div>
+                        <h2 class="text-xl font-bold text-slate-800">펫다이어리 PRO 혜택</h2>
+                        <p class="text-sm text-slate-500 mt-2">우리 아이와의 꾸준한 기록을 응원합니다!</p>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4 relative overflow-hidden">
+                            <div class="w-12 h-12 bg-orange-100 text-orange-500 rounded-full flex items-center justify-center text-xl font-bold z-10 flex-shrink-0">30</div>
+                            <div class="z-10 flex-1">
+                                <h3 class="font-bold text-slate-800 text-base">반려동물 커스텀 마그넷</h3>
+                                <p class="text-[11px] text-slate-500 mt-0.5">연속 30일 일기 작성 성공 시 증정</p>
+                            </div>
+                            <i class="fas fa-magnet absolute -right-4 -bottom-4 text-7xl text-slate-50 opacity-50"></i>
+                        </div>
+                        
+                        <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4 relative overflow-hidden">
+                            <div class="w-12 h-12 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center text-xl font-bold z-10 flex-shrink-0">60</div>
+                            <div class="z-10 flex-1">
+                                <h3 class="font-bold text-slate-800 text-base">프리미엄 반려동물 용품</h3>
+                                <p class="text-[11px] text-slate-500 mt-0.5">연속 60일 일기 작성 성공 시 증정</p>
+                            </div>
+                            <i class="fas fa-bone absolute -right-4 -bottom-4 text-7xl text-slate-50 opacity-50"></i>
+                        </div>
+                        
+                        <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4 relative overflow-hidden">
+                            <div class="w-12 h-12 bg-purple-100 text-purple-500 rounded-full flex items-center justify-center text-xl font-bold z-10 flex-shrink-0">100</div>
+                            <div class="z-10 flex-1">
+                                <h3 class="font-bold text-slate-800 text-base">커스텀 폰케이스</h3>
+                                <p class="text-[11px] text-slate-500 mt-0.5">연속 100일 일기 작성 성공 시 증정</p>
+                            </div>
+                            <i class="fas fa-mobile-alt absolute -right-4 -bottom-4 text-7xl text-slate-50 opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function renderCommunity(container) {
+            container.innerHTML = `
+                <div class="p-4 animate-fade-in">
+                    <div class="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 mb-6 flex gap-3">
+                        <img src="${petData.profileImageUrl || 'https://via.placeholder.com/150'}" class="w-10 h-10 rounded-full object-cover shadow-sm">
+                        <div class="flex-1">
+                            <textarea id="communityInput" rows="2" class="w-full bg-slate-50 rounded-xl p-3 text-sm outline-none resize-none border border-transparent focus:border-teal-500 transition" placeholder="우리 아이의 일상이나 고민을 나눠보세요!"></textarea>
+                            <div class="flex justify-end mt-2">
+                                <button onclick="saveCommunityPost()" class="px-5 py-2 bg-teal-500 text-white rounded-full text-xs font-bold shadow-md hover:bg-teal-600 transition">킁킁 🐾 글쓰기</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="communityList" class="space-y-4 pb-20"></div>
+                </div>
+            `;
+            loadCommunityPosts();
+        }
+
+        window.saveCommunityPost = async () => {
+            const content = document.getElementById('communityInput').value.trim();
+            if(!content) return alert('내용을 입력해주세요!');
+            await addDoc(collection(db, "community"), {
+                content,
+                userId: currentUser.uid,
+                userEmail: currentUser.email,
+                authorProfileImageUrl: petData.profileImageUrl || '',
+                timestamp: Date.now(),
+                likes: [],
+                comments: []
+            });
+            document.getElementById('communityInput').value = '';
+            loadCommunityPosts();
+        };
+
+        window.loadCommunityPosts = async () => {
+            const listDiv = document.getElementById('communityList');
+            if(!listDiv) return;
+            const snap = await getDocs(query(collection(db, "community")));
+            let posts = [];
+            snap.forEach(d => posts.push({id: d.id, ...d.data()}));
+            posts.sort((a,b) => b.timestamp - a.timestamp);
+            
+            listDiv.innerHTML = posts.map(item => {
+                const likeCount = item.likes ? item.likes.length : 0;
+                const isLiked = item.likes && item.likes.includes(currentUser.uid);
+                const authorName = item.userEmail ? item.userEmail.split('@')[0] : '익명';
+                const timeStr = new Date(item.timestamp).toLocaleString('ko-KR', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+                return `
+                    <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex gap-3">
+                        <img src="${item.authorProfileImageUrl || 'https://via.placeholder.com/150'}" class="w-10 h-10 rounded-full object-cover">
+                        <div class="flex-1">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="font-bold text-xs text-slate-800">${authorName}</span>
+                                <span class="text-[10px] text-slate-400">${timeStr}</span>
+                            </div>
+                            <p class="text-sm text-slate-700 leading-relaxed mb-3 mt-1">${item.content.replace(/\n/g, '<br>')}</p>
+                            <div class="flex gap-3 items-center">
+                                <button onclick="toggleCommunityLike('${item.id}')" class="text-xs font-bold ${isLiked ? 'text-red-500' : 'text-slate-400'} bg-slate-50 px-3 py-1.5 rounded-full"><i class="fas fa-heart"></i> ${likeCount}</button>
+                                ${item.userId === currentUser.uid ? `<button onclick="deleteCommunityPost('${item.id}')" class="text-[10px] text-slate-300 ml-auto underline">삭제</button>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        };
+
+        window.toggleCommunityLike = async (id) => {
+            const docRef = doc(db, "community", id);
+            const d = await getDoc(docRef);
+            let likes = d.data().likes || [];
+            if (likes.includes(currentUser.uid)) likes = likes.filter(uid => uid !== currentUser.uid);
+            else likes.push(currentUser.uid);
+            await updateDoc(docRef, { likes });
+            loadCommunityPosts();
+        };
+
+        window.deleteCommunityPost = async (id) => {
+            if(confirm("이 글을 삭제할까요?")) {
+                await deleteDoc(doc(db, "community", id));
+                loadCommunityPosts();
+            }
+        };
 
         async function renderHome(container) {
             const snap = await getDocs(query(collection(db, "diaries"), where("userId", "==", currentUser.uid)));
@@ -421,7 +545,6 @@
                 }
             });
 
-            // 연속 일기(Streak) 리셋 로직 적용
             let streakCount = 0;
             const todayStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
             let checkDate = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
@@ -429,15 +552,12 @@
 
             const hasWrittenToday = uniqueActualDates.has(todayStr);
 
-            if (!hasWrittenToday) {
-                checkDate.setUTCDate(checkDate.getUTCDate() - 1);
-            }
+            if (!hasWrittenToday) checkDate.setUTCDate(checkDate.getUTCDate() - 1);
 
             while (uniqueActualDates.has(checkDate.toISOString().split('T')[0])) {
                 streakCount++;
                 checkDate.setUTCDate(checkDate.getUTCDate() - 1);
             }
-            
             if (streakCount === 0 && hasWrittenToday) streakCount = 1;
 
             window.currentRandomDiary = null;
@@ -452,17 +572,20 @@
             const birthDateObj = new Date(petData.birthDate);
             const diffDays = Math.floor((Date.now() - birthDateObj.getTime()) / 86400000) + 1;
             
-            let targetDateStr = '';
-            let ddayStr = '';
-            
-            if (!hasWrittenToday) {
-                targetDateStr = '기록 대기중';
-                ddayStr = '오늘 일기를 작성하면';
-            } else {
-                let remainDays = 30 - streakCount;
-                targetDateStr = '30일 목표';
-                ddayStr = remainDays > 0 ? `D-${remainDays}` : `목표 달성!`;
-            }
+            // 날짜 계산 (산책로 펫말용)
+            const startDateObj = new Date(Date.now() - (streakCount - 1) * 86400000);
+            const getGoalDateStr = (daysToAdd) => {
+                const d = new Date(startDateObj);
+                d.setDate(d.getDate() + daysToAdd);
+                return `${d.getMonth()+1}월 ${d.getDate()}일`;
+            };
+
+            const date30 = getGoalDateStr(29);
+            const date60 = getGoalDateStr(59);
+            const date100 = getGoalDateStr(99);
+
+            // 펫 위치 퍼센트 (최대 100%)
+            let progressPercent = Math.min((streakCount / 100) * 100, 100);
 
             container.innerHTML = `
                 <div class="p-6 animate-fade-in space-y-6">
@@ -474,14 +597,53 @@
                             <p class="text-teal-300 font-bold">생후 ${diffDays}일째 · ${petData.focusArea}</p>
                         </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="bg-teal-50 p-6 rounded-[2rem] border border-teal-100 flex flex-col justify-center">
-                            <p class="text-xs text-teal-600 font-bold mb-1">연속 일기</p>
-                            <p class="text-2xl font-black text-teal-800">${streakCount}<span class="text-sm font-normal ml-1">일차</span></p>
-                        </div>
-                        <div class="bg-orange-50 p-5 rounded-[2rem] border border-orange-100 flex flex-col justify-center">
-                            <p class="text-xs text-orange-600 font-bold mb-1">목표 <span class="ml-1 text-[10px] font-normal text-orange-500 block sm:inline mt-1 sm:mt-0">${targetDateStr}</span></p>
-                            <p class="text-lg font-black text-orange-800 leading-tight">30일 완성 <span class="text-sm ml-1 text-orange-600 block sm:inline">${ddayStr}</span></p>
+                    
+                    <div class="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-6 pt-8 mt-6 relative overflow-hidden pb-12">
+                        <h3 class="font-bold text-slate-800 text-center mb-8 text-sm">🐾 ${petData.name}와(과) 함께 걷는 산책로 🐾</h3>
+                        
+                        <div class="relative w-full h-[450px] flex justify-center">
+                            <div class="absolute top-4 bottom-8 w-8 bg-amber-50 rounded-full border-2 border-dashed border-amber-200"></div>
+                            
+                            <div class="absolute top-0 w-full flex justify-between items-center px-4">
+                                <div class="w-24 text-right pr-2">
+                                    <span class="bg-purple-100 text-purple-600 px-2 py-1 rounded-lg text-xs font-bold block mb-1 shadow-sm">100일 도착!</span>
+                                    <span class="text-[10px] text-slate-400 font-bold">${date100}</span>
+                                </div>
+                                <div class="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center text-white z-10 shadow-lg border-4 border-white text-xl"><i class="fas fa-crown"></i></div>
+                                <div class="w-24"></div>
+                            </div>
+
+                            <div class="absolute top-[40%] w-full flex justify-between items-center px-4">
+                                <div class="w-24"></div>
+                                <div class="w-10 h-10 bg-blue-400 rounded-full flex items-center justify-center text-white z-10 shadow-md border-4 border-white text-xs font-bold">60</div>
+                                <div class="w-24 text-left pl-2">
+                                    <span class="bg-blue-100 text-blue-600 px-2 py-1 rounded-lg text-xs font-bold block mb-1 shadow-sm">60일 지점</span>
+                                    <span class="text-[10px] text-slate-400 font-bold">${date60}</span>
+                                </div>
+                            </div>
+
+                            <div class="absolute top-[70%] w-full flex justify-between items-center px-4">
+                                <div class="w-24 text-right pr-2">
+                                    <span class="bg-orange-100 text-orange-600 px-2 py-1 rounded-lg text-xs font-bold block mb-1 shadow-sm">30일 지점</span>
+                                    <span class="text-[10px] text-slate-400 font-bold">${date30}</span>
+                                </div>
+                                <div class="w-10 h-10 bg-orange-400 rounded-full flex items-center justify-center text-white z-10 shadow-md border-4 border-white text-xs font-bold">30</div>
+                                <div class="w-24"></div>
+                            </div>
+                            
+                            <div class="absolute bottom-0 w-full flex justify-center items-center">
+                                <div class="text-[11px] font-bold text-slate-400 bg-white px-4 py-1.5 rounded-full border shadow-sm z-10">시작!</div>
+                            </div>
+
+                            <div class="absolute w-16 h-16 z-20 transition-all duration-1000 ease-out" style="bottom: calc(2.5rem + ${progressPercent * 0.88}%); left: 50%; transform: translateX(-50%);">
+                                <div class="relative w-full h-full animate-bounce">
+                                    <img src="${petData.profileImageUrl || 'https://via.placeholder.com/150'}" class="w-16 h-16 rounded-full object-cover border-[4px] border-white shadow-xl">
+                                    <div class="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap bg-teal-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-md">
+                                        ${streakCount}일째 함께하는 중
+                                        <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-teal-500 rotate-45"></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>`;
@@ -631,10 +793,11 @@
                 `;
 
                 headerDiv.innerHTML = `
-                    <div class="flex overflow-x-auto no-scrollbar gap-2 items-center w-[80%] pl-1">${dateChips}</div>
-                    <div class="flex gap-2 w-[20%] justify-end">
+                    <div class="flex overflow-x-auto no-scrollbar gap-2 items-center w-[70%] pl-1">${dateChips}</div>
+                    <div class="flex gap-2 w-[30%] justify-end">
                         <button onclick="changeViewMode('card')" class="text-lg ${mode === 'card' ? 'text-teal-500' : 'text-slate-300'}"><i class="fas fa-th-large"></i></button>
                         <button onclick="changeViewMode('list')" class="text-lg ${mode === 'list' ? 'text-teal-500' : 'text-slate-300'}"><i class="fas fa-list"></i></button>
+                        <button onclick="changeViewMode('gallery')" class="text-lg ${mode === 'gallery' ? 'text-teal-500' : 'text-slate-300'}"><i class="fas fa-th"></i></button>
                     </div>
                 `;
                 container.appendChild(headerDiv);
@@ -642,9 +805,12 @@
                 let filteredList = window.selectedDiaryDate ? list.filter(d => d.diaryDate === window.selectedDiaryDate) : list;
                 
                 const contentDiv = document.createElement('div');
-                contentDiv.className = mode === 'card' ? "p-6 grid gap-6 pt-4" : "p-6 flex flex-col gap-3 pt-4";
+                if (mode === 'card') contentDiv.className = "p-6 grid gap-6 pt-4";
+                else if (mode === 'list') contentDiv.className = "p-6 flex flex-col gap-3 pt-4";
+                else if (mode === 'gallery') contentDiv.className = "p-4 grid grid-cols-3 gap-2 pt-4";
                 
                 if (filteredList.length === 0 && window.selectedDiaryDate) {
+                    contentDiv.className = "p-6 grid gap-6 pt-4";
                     contentDiv.innerHTML = `
                         <div class="py-24 text-center animate-fade-in">
                             <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-dashed border-slate-200">
@@ -670,7 +836,7 @@
                                 <h3 class="font-bold text-slate-800 text-base mb-1 z-10 relative">${item.title}</h3>
                                 <p class="text-slate-700 text-sm line-clamp-3 z-10 relative">${item.content}</p>
                             </div>`;
-                        } else {
+                        } else if (mode === 'list') {
                             card.className = "flex items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border cursor-pointer relative";
                             card.innerHTML = `
                                 <div class="text-[11px] font-bold text-slate-500 w-12 text-center leading-tight flex-none">${item.diaryDate.substring(5).replace('-','.')}</div>
@@ -680,6 +846,11 @@
                                     <div class="text-[11px] text-slate-400 truncate mt-0.5">${item.content}</div>
                                 </div>
                             `;
+                        } else if (mode === 'gallery') {
+                            card.className = "aspect-square bg-slate-100 rounded-xl cursor-pointer relative overflow-hidden shadow-sm";
+                            card.innerHTML = item.imageUrl 
+                                ? `<img src="${item.imageUrl}" class="w-full h-full object-cover hover:scale-110 transition-transform duration-300">`
+                                : `<div class="w-full h-full flex flex-col items-center justify-center text-slate-300 text-[10px] bg-slate-50 border border-slate-100 p-2 text-center break-words"><i class="fas fa-file-alt mb-2 text-xl"></i>${item.title.substring(0,6)}...</div>`;
                         }
                         contentDiv.appendChild(card);
                     });
@@ -736,8 +907,14 @@
             const modal = document.createElement('div');
             modal.id = "diaryModal";
             modal.className = "fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4 animate-fade-in";
+            
+            // 바깥 영역 클릭 시 뒤로가기 실행 (팝업 닫기)
+            modal.onclick = (e) => {
+                if (e.target === modal) history.back();
+            };
+
             modal.innerHTML = `
-                <div class="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden max-h-[85vh] flex flex-col shadow-2xl relative">
+                <div class="bg-white w-full max-w-sm rounded-[2.5rem] overflow-hidden max-h-[85vh] flex flex-col shadow-2xl relative" onclick="event.stopPropagation()">
                     ${item.imageUrl ? `<img src="${item.imageUrl}" class="w-full h-48 object-cover flex-shrink-0">` : ''}
                     <div class="p-8 overflow-y-auto flex-1 no-scrollbar">
                         <div class="flex justify-between items-center mb-4">
@@ -752,7 +929,7 @@
                             </div>
                         </div>
                         <h3 class="font-bold text-xl text-slate-800 mb-3">${item.title}</h3>
-                        <p class="text-slate-800 text-sm leading-relaxed">${item.content}</p>
+                        <p class="text-slate-800 text-sm leading-relaxed">${item.content.replace(/\n/g, '<br>')}</p>
                         ${commentsHTML}
                     </div>
                 </div>
@@ -832,10 +1009,13 @@
                             <label class="text-xs font-bold text-slate-500 ml-1">내 일기 기본 보기 설정</label>
                             <div class="flex gap-2 mt-2">
                                 <label class="flex-1 p-3 bg-slate-50 rounded-xl flex items-center justify-center gap-2 cursor-pointer text-sm font-bold text-slate-600">
-                                    <input type="radio" name="preferredViewMode" value="card" class="accent-teal-500" ${currentPrefMode !== 'list' ? 'checked' : ''}> 카드형
+                                    <input type="radio" name="preferredViewMode" value="card" class="accent-teal-500" ${currentPrefMode === 'card' ? 'checked' : ''}> 카드
                                 </label>
                                 <label class="flex-1 p-3 bg-slate-50 rounded-xl flex items-center justify-center gap-2 cursor-pointer text-sm font-bold text-slate-600">
-                                    <input type="radio" name="preferredViewMode" value="list" class="accent-teal-500" ${currentPrefMode === 'list' ? 'checked' : ''}> 리스트형
+                                    <input type="radio" name="preferredViewMode" value="list" class="accent-teal-500" ${currentPrefMode === 'list' ? 'checked' : ''}> 리스트
+                                </label>
+                                <label class="flex-1 p-3 bg-slate-50 rounded-xl flex items-center justify-center gap-2 cursor-pointer text-sm font-bold text-slate-600">
+                                    <input type="radio" name="preferredViewMode" value="gallery" class="accent-teal-500" ${currentPrefMode === 'gallery' ? 'checked' : ''}> 갤러리
                                 </label>
                             </div>
                         </div>
@@ -907,8 +1087,15 @@
         };
 
         window.saveDiary = async (id = '') => {
-            const content = document.getElementById('diaryContent').value;
-            const title = document.getElementById('diaryTitle').value.trim() || '제목 없음';
+            const content = document.getElementById('diaryContent').value.trim();
+            const title = document.getElementById('diaryTitle').value.trim();
+            
+            // 1. 빈 내용/제목 저장 방지 검사
+            if (!title || !content) {
+                alert("일기 제목과 내용을 모두 입력해주세요!");
+                return;
+            }
+
             const diaryDate = document.getElementById('diaryDateInput').value || new Date().toISOString().split('T')[0];
             const file = document.getElementById('fileInput').files[0];
             let imageUrl = '';
