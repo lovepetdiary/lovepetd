@@ -676,15 +676,31 @@
 </div>
 
 
-                            <div class="absolute w-16 h-16 z-20 transition-all duration-1000 ease-out" style="bottom: calc(2.5rem + ${progressPercent * 0.88}%); left: 50%; transform: translateX(-50%);">
-                                <div class="relative w-full h-full animate-bounce">
-                                    <img src="${petData.profileImageUrl || 'https://via.placeholder.com/150'}" class="w-16 h-16 rounded-full object-cover border-[4px] border-white shadow-xl">
-                                    <div class="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap bg-teal-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-md">
-                                        ${streakCount}일째 함께하는 중
-                                        <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-teal-500 rotate-45"></div>
-                                    </div>
-                                </div>
-                            </div>
+                            <div class="absolute w-16 h-16 z-30 transition-all duration-1000 ease-out" 
+     style="
+        top: ${
+            streakCount <= 30 ? (10 + (streakCount / 30) * 15) : 
+            streakCount <= 60 ? (25 + ((streakCount - 30) / 30) * 35) : 
+            (60 + ((streakCount - 60) / 40) * 30)
+        }%; 
+        left: ${
+            streakCount <= 30 ? (10 + (streakCount / 30) * 75) : 
+            streakCount <= 60 ? (85 - ((streakCount - 30) / 30) * 75) : 
+            (10 + ((streakCount - 60) / 40) * 75)
+        }%;
+        transform: translate(-50%, -50%);">
+    
+    <div class="relative w-full h-full animate-bounce">
+        <img src="${petData.profileImageUrl || 'https://via.placeholder.com/150'}" 
+             class="w-16 h-16 rounded-full object-cover border-[4px] border-white shadow-xl">
+        
+        <div class="absolute -top-12 left-1/2 -translate-x-1/2 whitespace-nowrap bg-teal-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-md">
+            ${streakCount}일째 함께하는 중
+            <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-teal-500 rotate-45"></div>
+        </div>
+    </div>
+</div>
+
                         </div>
                     </div>
                 </div>`;
